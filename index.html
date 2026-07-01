@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#17171a">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
 <title>Days Worked</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -374,6 +377,9 @@
   .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
 
   .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  .advanced-toggle {
+    font-size: 12px; color: var(--half); cursor: pointer; margin: -4px 0 16px; font-weight: 600;
+  }
 
   .day-detail { display: flex; gap: 8px; margin-top: 4px; margin-bottom: 14px; }
   .day-detail button {
@@ -569,6 +575,7 @@ function App() {
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState(new Date().getMonth());
   const [showSettings, setShowSettings] = useState(false);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [editingSettingsYear, setEditingSettingsYear] = useState(new Date().getFullYear());
   const [showSummary, setShowSummary] = useState(false);
   const [showAddContract, setShowAddContract] = useState(false);
@@ -646,13 +653,16 @@ function App() {
     const cId = contractIdOverride || activeContractId;
     setEditingSettingsYear(year);
     const eff = effectiveSettingsFor(yearSettings[cId], year);
+    const otVal = eff?.data?.otMultiplier ?? 1;
+    const balVal = yearSettings[cId]?.[year]?.startingBalance;
     setSettingsDraft({
       contractDays: String(eff?.data?.contractDays ?? 245),
       annualSalary: eff?.data?.annualSalary != null ? String(eff.data.annualSalary) : '',
-      otMultiplier: String(eff?.data?.otMultiplier ?? 1),
-      startingBalance: yearSettings[cId]?.[year]?.startingBalance != null ? String(yearSettings[cId][year].startingBalance) : '',
+      otMultiplier: String(otVal),
+      startingBalance: balVal != null ? String(balVal) : '',
       startingBalanceDate: yearSettings[cId]?.[year]?.startingBalanceDate || ''
     });
+    setShowAdvancedSettings(otVal != 1 || !!balVal);
     setShowSettings(true);
   };
 
@@ -1069,7 +1079,7 @@ function App() {
         <span><span className="swatch" style={{background: 'var(--quarter)'}}></span>Quarter</span>
       </div>
 
-      <div className="hint">Tap to cycle Full → Half → Quarter → clear.<br/>Hold a date to add a note. Switch contracts with the pills above to log stacked days. Data stays on this device only.</div>
+      <div className="hint">Tap to cycle Full → Half → Quarter → clear. Hold for notes.</div>
       </React.Fragment>
       )}
 
@@ -1150,22 +1160,32 @@ function App() {
               <input type="number" inputMode="decimal" placeholder="e.g. 175000" value={settingsDraft.annualSalary}
                 onChange={e => setSettingsDraft(s => ({ ...s, annualSalary: e.target.value }))} />
             </div>
-            <div className="field">
-              <label>Overtime multiplier (optional)</label>
-              <input type="number" inputMode="decimal" step="0.1" placeholder="e.g. 1.5" value={settingsDraft.otMultiplier}
-                onChange={e => setSettingsDraft(s => ({ ...s, otMultiplier: e.target.value }))} />
+
+            <div className="advanced-toggle" onClick={() => setShowAdvancedSettings(v => !v)}>
+              {showAdvancedSettings ? '– Hide advanced' : '+ Advanced (overtime rate, starting balance)'}
             </div>
-            <div className="field">
-              <label>Starting balance for {editingSettingsYear} (optional)</label>
-              <input type="number" inputMode="decimal" step="0.5" placeholder="Days already worked before tracking" value={settingsDraft.startingBalance}
-                onChange={e => setSettingsDraft(s => ({ ...s, startingBalance: e.target.value }))} />
-            </div>
-            <div className="field">
-              <label>As of date (optional)</label>
-              <input type="date" value={settingsDraft.startingBalanceDate}
-                onChange={e => setSettingsDraft(s => ({ ...s, startingBalanceDate: e.target.value }))} />
-              <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>Dates on or before this are locked on the calendar so they can't get double-counted.</div>
-            </div>
+
+            {showAdvancedSettings && (
+              <React.Fragment>
+                <div className="field">
+                  <label>Overtime multiplier (optional)</label>
+                  <input type="number" inputMode="decimal" step="0.1" placeholder="e.g. 1.5" value={settingsDraft.otMultiplier}
+                    onChange={e => setSettingsDraft(s => ({ ...s, otMultiplier: e.target.value }))} />
+                </div>
+                <div className="field">
+                  <label>Starting balance for {editingSettingsYear} (optional)</label>
+                  <input type="number" inputMode="decimal" step="0.5" placeholder="Days already worked before tracking" value={settingsDraft.startingBalance}
+                    onChange={e => setSettingsDraft(s => ({ ...s, startingBalance: e.target.value }))} />
+                </div>
+                <div className="field">
+                  <label>As of date (optional)</label>
+                  <input type="date" value={settingsDraft.startingBalanceDate}
+                    onChange={e => setSettingsDraft(s => ({ ...s, startingBalanceDate: e.target.value }))} />
+                  <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>Dates on or before this are locked on the calendar so they can't get double-counted.</div>
+                </div>
+              </React.Fragment>
+            )}
+
             <div className="btn-row">
               <button className="btn btn-ghost" onClick={() => setShowSettings(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={saveSettings}>Save</button>
@@ -1188,7 +1208,13 @@ function App() {
               <button className="btn btn-ghost" onClick={exportData}>Export data</button>
               <button className="btn btn-ghost" onClick={() => fileInputRef.current.click()}>Import data</button>
               <input ref={fileInputRef} type="file" accept=".json,application/json" style={{ display: 'none' }}
-                onChange={(e) => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ''; }} />
+                onChange={(e) => {
+                  if (e.target.files[0]) {
+                    const ok = window.confirm('This replaces all your current contracts, entries, and settings with what\'s in this backup file. This can\'t be undone. Continue?');
+                    if (ok) importData(e.target.files[0]);
+                  }
+                  e.target.value = '';
+                }} />
             </div>
           </div>
         </div>
