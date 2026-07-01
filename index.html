@@ -132,6 +132,12 @@
     background: none; border: none; color: var(--text-muted);
     font-size: 16px; cursor: pointer; padding: 2px 6px;
   }
+  .nudge.backup-nudge {
+    background: var(--full-dim); border-color: var(--full);
+  }
+  .nudge.backup-nudge .nudge-btn {
+    background: var(--full); color: #1a1408;
+  }
 
   /* Today card */
   .today-card {
@@ -562,9 +568,35 @@ function effectiveSettingsFor(yearSettingsForContract, year) {
   return { data: yearSettingsForContract[nextYears[0]], sourceYear: nextYears[0] };
 }
 
+const META_KEY = 'daysWorkedTrackerMeta';
+function loadMeta() {
+  try {
+    const raw = localStorage.getItem(META_KEY);
+    if (!raw) return { installedAt: null, lastExportAt: null };
+    return JSON.parse(raw);
+  } catch (e) {
+    return { installedAt: null, lastExportAt: null };
+  }
+}
+function saveMeta(meta) {
+  try {
+    localStorage.setItem(META_KEY, JSON.stringify(meta));
+  } catch (e) {}
+}
+
 function App() {
   const hasStorage = useMemo(() => storageAvailable(), []);
   const initial = useMemo(() => hasStorage ? loadData() : { contracts: {}, yearSettings: {}, entries: {}, adjustments: {}, lastActiveContract: null }, [hasStorage]);
+  const [meta, setMeta] = useState(() => {
+    if (!hasStorage) return { installedAt: null, lastExportAt: null };
+    const m = loadMeta();
+    if (!m.installedAt) {
+      m.installedAt = Date.now();
+      saveMeta(m);
+    }
+    return m;
+  });
+  const [backupNudgeDismissed, setBackupNudgeDismissed] = useState(false);
 
   const [contracts, setContracts] = useState(initial.contracts);
   const [yearSettings, setYearSettings] = useState(initial.yearSettings);
@@ -616,8 +648,9 @@ function App() {
     const idx = STATUS_CYCLE.indexOf(current);
     const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
     updateEntry(iso, { status: next });
+    hapticTap();
   };
-  const setDayStatus = (iso, status) => updateEntry(iso, { status });
+  const setDayStatus = (iso, status) => { updateEntry(iso, { status }); hapticTap(); };
   const setDayNote = (iso, note) => updateEntry(iso, { note });
 
   const switchContract = (id) => {
@@ -715,6 +748,10 @@ function App() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    const nextMeta = { ...meta, lastExportAt: Date.now() };
+    setMeta(nextMeta);
+    saveMeta(nextMeta);
+    setBackupNudgeDismissed(true);
   };
 
   const importData = (file) => {
@@ -848,6 +885,13 @@ function App() {
   const yesterdayIso = addDaysISO(todayIso, -1);
   const showNudge = !nudgeDismissed && activeContractId && !activeContractEntries[yesterdayIso] && effSettings;
 
+  const daysSinceBackup = useMemo(() => {
+    const ref = meta.lastExportAt || meta.installedAt;
+    if (!ref) return 0;
+    return Math.floor((Date.now() - ref) / 86400000);
+  }, [meta]);
+  const showBackupNudge = !backupNudgeDismissed && Object.keys(contracts).length > 0 && daysSinceBackup >= 14;
+
   const firstOfMonth = new Date(viewYear, viewMonth, 1);
   const startWeekday = firstOfMonth.getDay();
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
@@ -865,6 +909,26 @@ function App() {
     setViewYear(y);
   };
   const changeYear = (delta) => setViewYear(y => y + delta);
+
+  const swipeRef = useRef({ x: 0, y: 0, active: false });
+  const handleSwipeStart = (e) => {
+    const t = e.touches ? e.touches[0] : e;
+    swipeRef.current = { x: t.clientX, y: t.clientY, active: true };
+  };
+  const handleSwipeEnd = (e) => {
+    if (!swipeRef.current.active) return;
+    const t = e.changedTouches ? e.changedTouches[0] : e;
+    const dx = t.clientX - swipeRef.current.x;
+    const dy = t.clientY - swipeRef.current.y;
+    swipeRef.current.active = false;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      changeMonth(dx < 0 ? 1 : -1);
+    }
+  };
+
+  const hapticTap = () => {
+    if (navigator.vibrate) { try { navigator.vibrate(8); } catch (e) {} }
+  };
 
   const handlePressStart = (iso) => () => {
     pressState.current[iso] = Date.now();
@@ -941,6 +1005,16 @@ function App() {
           <div className="nudge-actions">
             <button className="nudge-btn" onClick={() => setDayStatus(yesterdayIso, 'full')}>Mark full</button>
             <button className="nudge-x" onClick={() => setNudgeDismissed(true)}>✕</button>
+          </div>
+        </div>
+      )}
+
+      {showBackupNudge && (
+        <div className="nudge backup-nudge">
+          <div className="nudge-text">{meta.lastExportAt ? `No backup in ${daysSinceBackup} days` : `You've never exported a backup`} — your data only lives on this device.</div>
+          <div className="nudge-actions">
+            <button className="nudge-btn" onClick={exportData}>Export now</button>
+            <button className="nudge-x" onClick={() => setBackupNudgeDismissed(true)}>✕</button>
           </div>
         </div>
       )}
@@ -1039,7 +1113,13 @@ function App() {
         {WEEKDAYS.map((w, i) => <span key={i}>{w}</span>)}
       </div>
 
-      <div className="cal-grid">
+      <div
+        className="cal-grid"
+        onTouchStart={handleSwipeStart}
+        onTouchEnd={handleSwipeEnd}
+        onMouseDown={handleSwipeStart}
+        onMouseUp={handleSwipeEnd}
+      >
         {cells.map((d, i) => {
           if (d === null) return <div key={i} className="cell empty-cell"></div>;
           const iso = isoOf(viewYear, viewMonth, d);
@@ -1287,5 +1367,14 @@ function App() {
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
+
+<script>
+  // Register service worker so the app keeps working without a connection after the first load
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+    });
+  }
+
 </body>
 </html>
