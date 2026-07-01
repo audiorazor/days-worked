@@ -443,6 +443,30 @@
   .notes-empty { font-size: 12px; color: var(--text-muted); padding: 8px 0; }
 
   .loading-msg { text-align: center; color: var(--text-muted); padding: 60px 0; font-size: 13px; }
+  .undo-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--panel-raised);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 13px;
+    color: var(--text);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    z-index: 60;
+    max-width: 90vw;
+    animation: toastup .2s ease;
+  }
+  @keyframes toastup { from { transform: translateX(-50%) translateY(10px); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }
+  .undo-toast button {
+    background: var(--full); color: #1a1408; border: none; border-radius: 7px;
+    padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  }
   .storage-warning {
     background: var(--danger-dim); border: 1px solid var(--danger);
     border-radius: 10px; padding: 12px 14px; font-size: 12px; margin-bottom: 14px; line-height: 1.5;
@@ -627,7 +651,10 @@ function App() {
   const activeContractYearSettings = yearSettings[activeContractId] || {};
   const activeContractAdjustments = (adjustments[activeContractId] && adjustments[activeContractId][viewYear]) || [];
 
-  const updateEntry = (iso, patch) => {
+  const [lastChange, setLastChange] = useState(null);
+
+  const updateEntry = (iso, patch, recordUndo) => {
+    const priorEntry = activeContractEntries[iso] || {};
     setEntries(prev => {
       const contractEntries = { ...(prev[activeContractId] || {}) };
       const existing = contractEntries[iso] || {};
@@ -641,16 +668,49 @@ function App() {
       persist(contracts, yearSettings, updated, activeContractId, adjustments);
       return updated;
     });
+    if (recordUndo && 'status' in patch) {
+      setLastChange({
+        contractId: activeContractId,
+        iso,
+        prevStatus: priorEntry.status || null,
+        prevNote: priorEntry.note,
+        newStatus: patch.status,
+        ts: Date.now()
+      });
+    }
   };
+
+  const undoLastChange = () => {
+    if (!lastChange) return;
+    const { contractId, iso, prevStatus, prevNote } = lastChange;
+    setEntries(prev => {
+      const contractEntries = { ...(prev[contractId] || {}) };
+      if (prevStatus) {
+        contractEntries[iso] = { status: prevStatus, note: prevNote };
+      } else {
+        delete contractEntries[iso];
+      }
+      const updated = { ...prev, [contractId]: contractEntries };
+      persist(contracts, yearSettings, updated, activeContractId, adjustments);
+      return updated;
+    });
+    setLastChange(null);
+  };
+
+  useEffect(() => {
+    if (!lastChange) return;
+    const t = setTimeout(() => setLastChange(null), 6000);
+    return () => clearTimeout(t);
+  }, [lastChange]);
 
   const cycleDay = (iso) => {
     const current = activeContractEntries[iso]?.status || null;
     const idx = STATUS_CYCLE.indexOf(current);
     const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
-    updateEntry(iso, { status: next });
+    updateEntry(iso, { status: next }, true);
     hapticTap();
   };
-  const setDayStatus = (iso, status) => { updateEntry(iso, { status }); hapticTap(); };
+  const setDayStatus = (iso, status) => { updateEntry(iso, { status }, true); hapticTap(); };
   const setDayNote = (iso, note) => updateEntry(iso, { note });
 
   const switchContract = (id) => {
@@ -930,15 +990,27 @@ function App() {
     if (navigator.vibrate) { try { navigator.vibrate(8); } catch (e) {} }
   };
 
-  const handlePressStart = (iso) => () => {
-    pressState.current[iso] = Date.now();
+  const MOVE_CANCEL_PX = 10;
+
+  const handlePressStart = (iso) => (e) => {
+    const t = e.touches ? e.touches[0] : e;
+    pressState.current[iso] = { time: Date.now(), x: t.clientX, y: t.clientY, moved: false };
+  };
+  const handlePressMove = (iso) => (e) => {
+    const rec = pressState.current[iso];
+    if (!rec) return;
+    const t = e.touches ? e.touches[0] : e;
+    if (Math.abs(t.clientX - rec.x) > MOVE_CANCEL_PX || Math.abs(t.clientY - rec.y) > MOVE_CANCEL_PX) {
+      rec.moved = true;
+    }
   };
   const handlePressEnd = (iso) => (e) => {
-    e.preventDefault();
-    const start = pressState.current[iso];
-    if (!start) return;
-    const elapsed = Date.now() - start;
+    const rec = pressState.current[iso];
+    if (!rec) return;
     delete pressState.current[iso];
+    if (rec.moved) return; // finger moved — this was a scroll/drag, not a deliberate tap
+    e.preventDefault();
+    const elapsed = Date.now() - rec.time;
     if (elapsed >= LONG_PRESS_MS) {
       setDayDetailIso(iso);
     } else {
@@ -956,6 +1028,12 @@ function App() {
 
   return (
     <div className="wrap">
+      {lastChange && (
+        <div className="undo-toast">
+          <span>{friendlyDate(lastChange.iso)} marked {lastChange.newStatus || 'clear'}</span>
+          <button onClick={undoLastChange}>Undo</button>
+        </div>
+      )}
       <div className="header">
         <div className="brand">Days<span className="dot">·</span>Worked</div>
         <div className="header-icons">
@@ -1139,8 +1217,10 @@ function App() {
               className={cls.join(' ')}
               title={isLocked ? 'Covered by your starting balance' : undefined}
               onMouseDown={isLocked ? undefined : handlePressStart(iso)}
+              onMouseMove={isLocked ? undefined : handlePressMove(iso)}
               onMouseUp={isLocked ? undefined : handlePressEnd(iso)}
               onTouchStart={isLocked ? undefined : handlePressStart(iso)}
+              onTouchMove={isLocked ? undefined : handlePressMove(iso)}
               onTouchEnd={isLocked ? undefined : handlePressEnd(iso)}
             >
               {d}
