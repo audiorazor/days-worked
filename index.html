@@ -222,13 +222,6 @@
   }
   .progress-fill.over { background: linear-gradient(90deg, var(--danger), #e08a8a); }
 
-  .pace-line {
-    margin-top: 10px;
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-  .pace-line b { color: var(--half); font-weight: 600; }
-
   /* Month nav */
   .month-nav {
     display: flex; align-items: center; justify-content: space-between;
@@ -866,21 +859,6 @@ function App() {
   const isOver = totals.total >= contractDays;
   const pct = Math.min(100, (totals.total / contractDays) * 100);
 
-  const pace = useMemo(() => {
-    const now = new Date();
-    if (now.getFullYear() !== viewYear) return null;
-    const startOfYear = new Date(now.getFullYear(), 0, 1);
-    const dayOfYear = Math.floor((now - startOfYear) / 86400000) + 1;
-    if (totals.ytdThroughToday <= 0 || dayOfYear <= 0) return null;
-    const rate = totals.ytdThroughToday / dayOfYear;
-    if (rate <= 0) return null;
-    const daysNeeded = contractDays - totals.ytdThroughToday;
-    if (daysNeeded <= 0) return { hit: true };
-    const calendarDaysToGo = daysNeeded / rate;
-    const projected = new Date(now.getTime() + calendarDaysToGo * 86400000);
-    return { hit: false, date: projected };
-  }, [totals, contractDays, viewYear]);
-
   const dayRate = effSettings && effSettings.data.annualSalary ? effSettings.data.annualSalary / contractDays : null;
   const extraDays = Math.max(0, totals.total - contractDays);
   const otMultiplier = effSettings?.data?.otMultiplier || 1;
@@ -1138,12 +1116,6 @@ function App() {
           <div className="progress-track">
             <div className={"progress-fill" + (isOver ? " over" : "")} style={{ width: pct + '%' }}></div>
           </div>
-          {pace && !pace.hit && (
-            <div className="pace-line">At your current pace, you'd hit {contractDays} around <b>{pace.date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</b></div>
-          )}
-          {pace && pace.hit && (
-            <div className="pace-line">You've already reached your <b>{contractDays}</b>-day threshold this year.</div>
-          )}
           {dayRate && (
             <div className="earnings-panel">
               <span>Day rate</span><b>${dayRate.toFixed(0)}</b>
