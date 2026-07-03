@@ -822,7 +822,18 @@ function App() {
 
   const deleteTour = (id) => {
     const name = tours[id]?.name || 'this tour';
-    const ok = window.confirm(`Delete "${name}"? Any days logged under it will show as "No tag" instead — the day credit itself isn't lost. This can't be undone.`);
+    let affectedDays = 0;
+    let affectedTotal = 0;
+    Object.values(entries).forEach(dayObj => {
+      if (dayObj[id]) {
+        affectedDays += 1;
+        affectedTotal += STATUS_VALUE[dayObj[id].status] || 0;
+      }
+    });
+    const warning = affectedDays > 0
+      ? `Delete "${name}"? This removes ${affectedDays} logged day${affectedDays === 1 ? '' : 's'} tagged to it (${affectedTotal.toFixed(1)} days total) — your day count will drop by that much. This can't be undone.`
+      : `Delete "${name}"? This can't be undone.`;
+    const ok = window.confirm(warning);
     if (!ok) return;
 
     const nextTours = { ...tours };
@@ -832,17 +843,9 @@ function App() {
     Object.entries(entries).forEach(([iso, dayObj]) => {
       if (!(id in dayObj)) { nextEntries[iso] = dayObj; return; }
       const day = { ...dayObj };
-      const entry = day[id];
       delete day[id];
-      if (day[NONE_KEY]) {
-        // Another entry already sits under "No tag" for this date — keep this one
-        // under its old id rather than overwriting/losing data. It'll show as
-        // "Deleted tour" just for this specific date.
-        day[id] = entry;
-      } else {
-        day[NONE_KEY] = entry;
-      }
-      nextEntries[iso] = day;
+      if (Object.keys(day).length > 0) nextEntries[iso] = day;
+      // if the day has no other tour's entry left, it's dropped entirely
     });
 
     const nextActiveTour = activeTour === id ? pickFallbackTour(nextTours, id) : activeTour;
