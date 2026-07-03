@@ -802,12 +802,17 @@ function App() {
     persist(nextTours, yearSettings, entries, adjustments, activeTour);
   };
 
+  // If the active tour goes away (archived/deleted), prefer switching to another
+  // remaining visible tour over dropping all the way to "No tag".
+  const pickFallbackTour = (toursObj, excludeId) => {
+    const remaining = Object.entries(toursObj).filter(([tid, t]) => tid !== excludeId && !t.archived);
+    return remaining.length ? remaining[0][0] : null;
+  };
+
   const toggleArchiveTour = (id) => {
     const willBeArchived = !tours[id].archived;
     const nextTours = { ...tours, [id]: { ...tours[id], archived: willBeArchived } };
-    // If you archive the tour you're currently logging under, fall back to "No tag"
-    // instead of silently staying pointed at a tour that's no longer shown.
-    const nextActiveTour = (willBeArchived && activeTour === id) ? null : activeTour;
+    const nextActiveTour = (willBeArchived && activeTour === id) ? pickFallbackTour(nextTours, id) : activeTour;
     setTours(nextTours);
     setActiveTour(nextActiveTour);
     persist(nextTours, yearSettings, entries, adjustments, nextActiveTour);
@@ -838,7 +843,7 @@ function App() {
       nextEntries[iso] = day;
     });
 
-    const nextActiveTour = activeTour === id ? null : activeTour;
+    const nextActiveTour = activeTour === id ? pickFallbackTour(nextTours, id) : activeTour;
     setTours(nextTours);
     setEntries(nextEntries);
     setActiveTour(nextActiveTour);
