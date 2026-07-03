@@ -73,13 +73,13 @@
   }
   .icon-btn:active { background: var(--panel-raised); }
 
-  /* Contract pills */
+  /* Tour pills */
   .pill-row {
     display: flex;
     gap: 8px;
     overflow-x: auto;
     padding-bottom: 4px;
-    margin-bottom: 14px;
+    margin-bottom: 6px;
     scrollbar-width: none;
   }
   .pill-row::-webkit-scrollbar { display: none; }
@@ -97,11 +97,11 @@
   }
   .pill.active { background: var(--full); color: #1a1408; border-color: var(--full); }
   .pill.add { color: var(--full); border-style: dashed; }
+  .pill.none-pill { font-style: italic; }
 
-  .combined-line {
-    font-size: 11px; color: var(--text-muted); margin: -6px 0 14px 2px;
+  .pill-hint {
+    font-size: 11px; color: var(--text-muted); margin: -2px 0 14px 2px;
   }
-  .combined-line b { color: var(--text); font-family: 'JetBrains Mono', monospace; }
 
   /* Nudge banner */
   .nudge {
@@ -159,6 +159,9 @@
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
     color: var(--text);
+  }
+  .also-logged {
+    font-size: 11px; color: var(--half); margin-top: 8px;
   }
 
   /* Stat panel */
@@ -306,6 +309,11 @@
     width: 4px; height: 4px; border-radius: 50%;
     background: currentColor; opacity: 0.7;
   }
+  .cell .stack-badge {
+    position: absolute; top: 2px; left: 3px;
+    font-size: 8px; font-weight: 700; line-height: 1;
+    color: currentColor; opacity: 0.85;
+  }
 
   .legend {
     display: flex; gap: 14px; margin-top: 16px; flex-wrap: wrap;
@@ -362,7 +370,7 @@
     border-radius: 8px; padding: 12px 12px; color: var(--text);
     font-family: 'JetBrains Mono', monospace; font-size: 15px;
   }
-  .field textarea { font-family: 'Inter', sans-serif; font-size: 14px; resize: vertical; min-height: 60px; }
+  .field textarea { font-family: 'Inter', sans-serif; font-size: 14px; resize: vertical; min-height: 50px; }
   .field input:focus, .field textarea:focus { outline: none; border-color: var(--full); }
   .btn-row { display: flex; gap: 10px; margin-top: 18px; }
   .btn {
@@ -390,6 +398,30 @@
   .day-detail button.active-half { background: var(--half); color: #0d1c28; border-color: var(--half); }
   .day-detail button.active-quarter { background: var(--quarter); color: #241408; border-color: var(--quarter); }
 
+  .tour-chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tour-chip {
+    padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text-muted); font-size: 11px; font-weight: 600;
+    cursor: pointer; white-space: nowrap;
+  }
+  .tour-chip.active { background: var(--half); color: #0d1c28; border-color: var(--half); }
+
+  .entry-block {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px; margin-bottom: 10px;
+  }
+  .entry-block-head {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+  }
+  .entry-block-title { font-size: 12px; font-weight: 700; color: var(--text); }
+  .entry-block-remove {
+    background: none; border: none; color: var(--danger); font-size: 12px; cursor: pointer; padding: 2px 6px;
+  }
+  .day-total-line {
+    font-size: 12px; color: var(--text-muted); margin: -8px 0 14px;
+  }
+  .day-total-line b { color: var(--text); font-family: 'JetBrains Mono', monospace; }
+
   .earnings-panel {
     margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
     display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted);
@@ -405,7 +437,6 @@
   .summary-stats { text-align: right; font-size: 12px; color: var(--text-muted); }
   .summary-stats b { color: var(--text); font-family: 'JetBrains Mono', monospace; }
   .summary-stats.over b { color: var(--danger); }
-  .summary-contract-block { margin-bottom: 18px; }
 
   .data-actions { display: flex; gap: 10px; }
   .data-actions .btn { font-size: 13px; padding: 11px; }
@@ -477,8 +508,10 @@ const WEEKDAYS = ['S','M','T','W','T','F','S'];
 const STATUS_CYCLE = [null, 'full', 'half', 'quarter'];
 const STATUS_VALUE = { full: 1, half: 0.5, quarter: 0.25 };
 const STORAGE_KEY = 'daysWorkedTrackerData';
+const META_KEY = 'daysWorkedTrackerMeta';
 const LONG_PRESS_MS = 450;
-const DEFAULT_CONTRACT_ID = 'main';
+const MOVE_CANCEL_PX = 10;
+const NONE_KEY = '__none__';
 
 function todayISO() {
   const d = new Date();
@@ -498,7 +531,11 @@ function friendlyDate(iso) {
   return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 function makeId() {
-  return 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  return 'id_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+function dayTotal(dayObj) {
+  if (!dayObj) return 0;
+  return Object.values(dayObj).reduce((s, e) => s + (STATUS_VALUE[e.status] || 0), 0);
 }
 
 function storageAvailable() {
@@ -512,80 +549,113 @@ function storageAvailable() {
   }
 }
 
+function effectiveSettingsFor(yearSettings, year) {
+  if (!yearSettings) return null;
+  if (yearSettings[year]) return { data: yearSettings[year], sourceYear: year };
+  const configuredYears = Object.keys(yearSettings).map(Number);
+  if (!configuredYears.length) return null;
+  const priorYears = configuredYears.filter(y => y <= year).sort((a,b) => b - a);
+  if (priorYears.length) return { data: yearSettings[priorYears[0]], sourceYear: priorYears[0] };
+  const nextYears = configuredYears.sort((a,b) => a - b);
+  return { data: yearSettings[nextYears[0]], sourceYear: nextYears[0] };
+}
+
+// Normalizes any older single-entry-per-day shape ({status, note, tour}) into the
+// current stackable shape ({ [tourKey]: {status, note} }), so a day can hold credit
+// from more than one tour.
+function normalizeEntries(rawEntries) {
+  const out = {};
+  Object.entries(rawEntries || {}).forEach(([iso, dayVal]) => {
+    if (dayVal && typeof dayVal === 'object' && 'status' in dayVal) {
+      const key = dayVal.tour || NONE_KEY;
+      out[iso] = { [key]: { status: dayVal.status, note: dayVal.note } };
+    } else if (dayVal && typeof dayVal === 'object') {
+      out[iso] = dayVal;
+    }
+  });
+  return out;
+}
+
+function migrateContractsToShared(parsed) {
+  const contracts = parsed.contracts || {};
+  const yearSettingsByContract = parsed.yearSettings || {};
+  const entriesByContract = parsed.entries || {};
+  const adjustmentsByContract = parsed.adjustments || {};
+  const lastActive = parsed.lastActiveContract;
+
+  const tours = {};
+  const mergedEntries = {};
+  const mergedAdjustments = {};
+  const contractIds = Object.keys(contracts);
+  const baseId = (lastActive && contracts[lastActive]) ? lastActive : contractIds[0];
+  const mergedYearSettings = baseId ? (yearSettingsByContract[baseId] || {}) : {};
+
+  contractIds.forEach(cId => {
+    tours[cId] = { name: contracts[cId].name, archived: !!contracts[cId].archived };
+    const cEntries = entriesByContract[cId] || {};
+    Object.entries(cEntries).forEach(([iso, e]) => {
+      const key = cId;
+      if (!mergedEntries[iso]) mergedEntries[iso] = {};
+      if (!mergedEntries[iso][key]) mergedEntries[iso][key] = { status: e.status, note: e.note };
+    });
+    const cAdjByYear = adjustmentsByContract[cId] || {};
+    Object.entries(cAdjByYear).forEach(([year, list]) => {
+      if (!mergedAdjustments[year]) mergedAdjustments[year] = [];
+      mergedAdjustments[year] = mergedAdjustments[year].concat(
+        (list || []).map(a => ({ ...a, note: (a.note ? a.note + ' ' : '') + '(' + (contracts[cId].name || 'contract') + ')' }))
+      );
+    });
+  });
+
+  return {
+    tours,
+    yearSettings: mergedYearSettings,
+    entries: mergedEntries,
+    adjustments: mergedAdjustments,
+    activeTour: (lastActive && tours[lastActive]) ? lastActive : (contractIds[0] || null)
+  };
+}
+
 function loadData() {
-  const empty = { contracts: {}, yearSettings: {}, entries: {}, adjustments: {}, lastActiveContract: null };
+  const empty = { tours: {}, yearSettings: {}, entries: {}, adjustments: {}, activeTour: null };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return empty;
     const parsed = JSON.parse(raw);
+    let result;
 
-    // v4 shape: has adjustments
-    if (parsed.contracts && parsed.adjustments) {
-      return {
-        contracts: parsed.contracts || {},
+    if (parsed.tours) {
+      result = {
+        tours: parsed.tours || {},
         yearSettings: parsed.yearSettings || {},
         entries: parsed.entries || {},
         adjustments: parsed.adjustments || {},
-        lastActiveContract: parsed.lastActiveContract || Object.keys(parsed.contracts || {})[0] || null
+        activeTour: parsed.activeTour || Object.keys(parsed.tours || {})[0] || null
       };
-    }
-    // v3 shape: multi-contract, no adjustments yet
-    if (parsed.contracts) {
-      return {
-        contracts: parsed.contracts || {},
-        yearSettings: parsed.yearSettings || {},
-        entries: parsed.entries || {},
-        adjustments: {},
-        lastActiveContract: parsed.lastActiveContract || Object.keys(parsed.contracts || {})[0] || null
-      };
-    }
-    // v2 shape: flat yearSettings + entries, no contracts -> wrap as single "Main" contract
-    if (parsed.yearSettings || parsed.entries) {
+    } else if (parsed.contracts) {
+      result = migrateContractsToShared(parsed);
+    } else if (parsed.yearSettings || parsed.entries) {
       const hasAny = (parsed.yearSettings && Object.keys(parsed.yearSettings).length) || (parsed.entries && Object.keys(parsed.entries).length);
-      if (!hasAny) return empty;
-      return {
-        contracts: { [DEFAULT_CONTRACT_ID]: { name: 'Main Tour', archived: false } },
-        yearSettings: { [DEFAULT_CONTRACT_ID]: parsed.yearSettings || {} },
-        entries: { [DEFAULT_CONTRACT_ID]: parsed.entries || {} },
-        adjustments: {},
-        lastActiveContract: DEFAULT_CONTRACT_ID
-      };
+      result = hasAny ? { tours: {}, yearSettings: parsed.yearSettings || {}, entries: parsed.entries || {}, adjustments: {}, activeTour: null } : empty;
+    } else if (parsed.settings && parsed.settings.contractDays != null) {
+      result = { tours: {}, yearSettings: { [new Date().getFullYear()]: parsed.settings }, entries: parsed.entries || {}, adjustments: {}, activeTour: null };
+    } else {
+      result = empty;
     }
-    // v1 shape: single flat settings object
-    if (parsed.settings && parsed.settings.contractDays != null) {
-      return {
-        contracts: { [DEFAULT_CONTRACT_ID]: { name: 'Main Tour', archived: false } },
-        yearSettings: { [DEFAULT_CONTRACT_ID]: { [new Date().getFullYear()]: parsed.settings } },
-        entries: { [DEFAULT_CONTRACT_ID]: parsed.entries || {} },
-        adjustments: {},
-        lastActiveContract: DEFAULT_CONTRACT_ID
-      };
-    }
-    return empty;
+    result.entries = normalizeEntries(result.entries);
+    return result;
   } catch (e) {
     return empty;
   }
 }
-function saveData(contracts, yearSettings, entries, lastActiveContract, adjustments) {
+function saveData(tours, yearSettings, entries, adjustments, activeTour) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ contracts, yearSettings, entries, lastActiveContract, adjustments }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ tours, yearSettings, entries, adjustments, activeTour }));
     return true;
   } catch (e) {
     return false;
   }
 }
-function effectiveSettingsFor(yearSettingsForContract, year) {
-  if (!yearSettingsForContract) return null;
-  if (yearSettingsForContract[year]) return { data: yearSettingsForContract[year], sourceYear: year };
-  const configuredYears = Object.keys(yearSettingsForContract).map(Number);
-  if (!configuredYears.length) return null;
-  const priorYears = configuredYears.filter(y => y <= year).sort((a,b) => b - a);
-  if (priorYears.length) return { data: yearSettingsForContract[priorYears[0]], sourceYear: priorYears[0] };
-  const nextYears = configuredYears.sort((a,b) => a - b);
-  return { data: yearSettingsForContract[nextYears[0]], sourceYear: nextYears[0] };
-}
-
-const META_KEY = 'daysWorkedTrackerMeta';
 function loadMeta() {
   try {
     const raw = localStorage.getItem(META_KEY);
@@ -596,30 +666,26 @@ function loadMeta() {
   }
 }
 function saveMeta(meta) {
-  try {
-    localStorage.setItem(META_KEY, JSON.stringify(meta));
-  } catch (e) {}
+  try { localStorage.setItem(META_KEY, JSON.stringify(meta)); } catch (e) {}
 }
 
 function App() {
   const hasStorage = useMemo(() => storageAvailable(), []);
-  const initial = useMemo(() => hasStorage ? loadData() : { contracts: {}, yearSettings: {}, entries: {}, adjustments: {}, lastActiveContract: null }, [hasStorage]);
+  const initial = useMemo(() => hasStorage ? loadData() : { tours: {}, yearSettings: {}, entries: {}, adjustments: {}, activeTour: null }, [hasStorage]);
+
+  const [tours, setTours] = useState(initial.tours);
+  const [yearSettings, setYearSettings] = useState(initial.yearSettings);
+  const [entries, setEntries] = useState(initial.entries); // { iso: { [tourKey]: {status, note} } }
+  const [adjustments, setAdjustments] = useState(initial.adjustments);
+  const [activeTour, setActiveTour] = useState(initial.activeTour);
+
   const [meta, setMeta] = useState(() => {
     if (!hasStorage) return { installedAt: null, lastExportAt: null };
     const m = loadMeta();
-    if (!m.installedAt) {
-      m.installedAt = Date.now();
-      saveMeta(m);
-    }
+    if (!m.installedAt) { m.installedAt = Date.now(); saveMeta(m); }
     return m;
   });
   const [backupNudgeDismissed, setBackupNudgeDismissed] = useState(false);
-
-  const [contracts, setContracts] = useState(initial.contracts);
-  const [yearSettings, setYearSettings] = useState(initial.yearSettings);
-  const [entries, setEntries] = useState(initial.entries);
-  const [adjustments, setAdjustments] = useState(initial.adjustments);
-  const [activeContractId, setActiveContractId] = useState(initial.lastActiveContract);
 
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState(new Date().getMonth());
@@ -627,64 +693,57 @@ function App() {
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [editingSettingsYear, setEditingSettingsYear] = useState(new Date().getFullYear());
   const [showSummary, setShowSummary] = useState(false);
-  const [showAddContract, setShowAddContract] = useState(false);
+  const [showAddTour, setShowAddTour] = useState(false);
   const [showAdjustments, setShowAdjustments] = useState(false);
-  const [newContractName, setNewContractName] = useState('');
+  const [newTourName, setNewTourName] = useState('');
   const [dayDetailIso, setDayDetailIso] = useState(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState({ contractDays: '245', annualSalary: '', otMultiplier: '1', startingBalance: '', startingBalanceDate: '' });
   const fileInputRef = useRef(null);
   const pressState = useRef({});
+  const swipeRef = useRef({ x: 0, y: 0, active: false });
 
-  const persist = useCallback((nc, nys, ne, nActive, nAdj) => {
-    saveData(nc, nys, ne, nActive, nAdj);
+  const persist = useCallback((nt, nys, ne, nAdj, nActiveTour) => {
+    saveData(nt, nys, ne, nAdj, nActiveTour);
   }, []);
-
-  const activeContractEntries = entries[activeContractId] || {};
-  const activeContractYearSettings = yearSettings[activeContractId] || {};
-  const activeContractAdjustments = (adjustments[activeContractId] && adjustments[activeContractId][viewYear]) || [];
 
   const [lastChange, setLastChange] = useState(null);
 
-  const updateEntry = (iso, patch, recordUndo) => {
-    const priorEntry = activeContractEntries[iso] || {};
+  // Updates a single tour's entry for a given date, without touching other tours' entries on that date.
+  const updateDayTourEntry = (iso, tourKey, patch, recordUndo) => {
+    const priorDay = entries[iso] || {};
+    const priorEntry = priorDay[tourKey] || {};
     setEntries(prev => {
-      const contractEntries = { ...(prev[activeContractId] || {}) };
-      const existing = contractEntries[iso] || {};
-      const merged = { ...existing, ...patch };
+      const day = { ...(prev[iso] || {}) };
+      const merged = { ...(day[tourKey] || {}), ...patch };
       if (!merged.status) {
-        delete contractEntries[iso];
+        delete day[tourKey];
       } else {
-        contractEntries[iso] = merged;
+        day[tourKey] = merged;
       }
-      const updated = { ...prev, [activeContractId]: contractEntries };
-      persist(contracts, yearSettings, updated, activeContractId, adjustments);
+      const updated = { ...prev };
+      if (Object.keys(day).length === 0) delete updated[iso]; else updated[iso] = day;
+      persist(tours, yearSettings, updated, adjustments, activeTour);
       return updated;
     });
     if (recordUndo && 'status' in patch) {
-      setLastChange({
-        contractId: activeContractId,
-        iso,
-        prevStatus: priorEntry.status || null,
-        prevNote: priorEntry.note,
-        newStatus: patch.status,
-        ts: Date.now()
-      });
+      setLastChange({ iso, tourKey, prevStatus: priorEntry.status || null, prevNote: priorEntry.note, newStatus: patch.status, ts: Date.now() });
     }
   };
 
   const undoLastChange = () => {
     if (!lastChange) return;
-    const { contractId, iso, prevStatus, prevNote } = lastChange;
+    const { iso, tourKey, prevStatus, prevNote } = lastChange;
     setEntries(prev => {
-      const contractEntries = { ...(prev[contractId] || {}) };
+      const day = { ...(prev[iso] || {}) };
       if (prevStatus) {
-        contractEntries[iso] = { status: prevStatus, note: prevNote };
+        day[tourKey] = { status: prevStatus, note: prevNote };
       } else {
-        delete contractEntries[iso];
+        delete day[tourKey];
       }
-      const updated = { ...prev, [contractId]: contractEntries };
-      persist(contracts, yearSettings, updated, activeContractId, adjustments);
+      const updated = { ...prev };
+      if (Object.keys(day).length === 0) delete updated[iso]; else updated[iso] = day;
+      persist(tours, yearSettings, updated, adjustments, activeTour);
       return updated;
     });
     setLastChange(null);
@@ -696,57 +755,70 @@ function App() {
     return () => clearTimeout(t);
   }, [lastChange]);
 
+  const hapticTap = () => {
+    if (navigator.vibrate) { try { navigator.vibrate(8); } catch (e) {} }
+  };
+
+  const activeKey = activeTour || NONE_KEY;
+
   const cycleDay = (iso) => {
-    const current = activeContractEntries[iso]?.status || null;
+    const current = entries[iso]?.[activeKey]?.status || null;
     const idx = STATUS_CYCLE.indexOf(current);
     const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
-    updateEntry(iso, { status: next }, true);
+    updateDayTourEntry(iso, activeKey, { status: next }, true);
     hapticTap();
   };
-  const setDayStatus = (iso, status) => { updateEntry(iso, { status }, true); hapticTap(); };
-  const setDayNote = (iso, note) => updateEntry(iso, { note });
+  const setTodayStatus = (status) => {
+    updateDayTourEntry(todayISO(), activeKey, { status }, true);
+    hapticTap();
+  };
+  const setEntryStatus = (iso, tourKey, status) => {
+    updateDayTourEntry(iso, tourKey, { status }, true);
+    hapticTap();
+  };
+  const setEntryNote = (iso, tourKey, note) => updateDayTourEntry(iso, tourKey, { note });
+  const removeEntry = (iso, tourKey) => updateDayTourEntry(iso, tourKey, { status: null });
+  const addEntryForTour = (iso, tourKey) => updateDayTourEntry(iso, tourKey, { status: 'full' }, true);
 
-  const switchContract = (id) => {
-    setActiveContractId(id);
-    persist(contracts, yearSettings, entries, id, adjustments);
+  const switchActiveTour = (id) => {
+    setActiveTour(id);
+    persist(tours, yearSettings, entries, adjustments, id);
   };
 
-  const createContract = () => {
-    const name = newContractName.trim() || ('Contract ' + (Object.keys(contracts).length + 1));
+  const createTour = () => {
+    const name = newTourName.trim() || ('Tour ' + (Object.keys(tours).length + 1));
     const id = makeId();
-    const nextContracts = { ...contracts, [id]: { name, archived: false } };
-    setContracts(nextContracts);
-    setActiveContractId(id);
-    persist(nextContracts, yearSettings, entries, id, adjustments);
-    setShowAddContract(false);
-    setNewContractName('');
-    openSettingsFor(viewYear, id);
+    const nextTours = { ...tours, [id]: { name, archived: false } };
+    setTours(nextTours);
+    setActiveTour(id);
+    persist(nextTours, yearSettings, entries, adjustments, id);
+    setShowAddTour(false);
+    setNewTourName('');
   };
 
-  const renameContract = (id, name) => {
-    const nextContracts = { ...contracts, [id]: { ...contracts[id], name } };
-    setContracts(nextContracts);
-    persist(nextContracts, yearSettings, entries, activeContractId, adjustments);
+  const renameTour = (id, name) => {
+    const nextTours = { ...tours, [id]: { ...tours[id], name } };
+    setTours(nextTours);
+    persist(nextTours, yearSettings, entries, adjustments, activeTour);
   };
 
-  const toggleArchiveContract = (id) => {
-    const nextContracts = { ...contracts, [id]: { ...contracts[id], archived: !contracts[id].archived } };
-    setContracts(nextContracts);
-    persist(nextContracts, yearSettings, entries, activeContractId, adjustments);
+  const toggleArchiveTour = (id) => {
+    const nextTours = { ...tours, [id]: { ...tours[id], archived: !tours[id].archived } };
+    setTours(nextTours);
+    persist(nextTours, yearSettings, entries, adjustments, activeTour);
   };
 
-  const openSettingsFor = (year, contractIdOverride) => {
-    const cId = contractIdOverride || activeContractId;
+  const openSettingsFor = (year) => {
     setEditingSettingsYear(year);
-    const eff = effectiveSettingsFor(yearSettings[cId], year);
+    const eff = effectiveSettingsFor(yearSettings, year);
     const otVal = eff?.data?.otMultiplier ?? 1;
-    const balVal = yearSettings[cId]?.[year]?.startingBalance;
+    const balVal = yearSettings[year]?.startingBalance;
     setSettingsDraft({
       contractDays: String(eff?.data?.contractDays ?? 245),
       annualSalary: eff?.data?.annualSalary != null ? String(eff.data.annualSalary) : '',
       otMultiplier: String(otVal),
       startingBalance: balVal != null ? String(balVal) : '',
-      startingBalanceDate: yearSettings[cId]?.[year]?.startingBalanceDate || ''
+      startingBalanceDate: yearSettings[year]?.startingBalanceDate || ''
     });
     setShowAdvancedSettings(otVal != 1 || !!balVal);
     setShowSettings(true);
@@ -758,40 +830,36 @@ function App() {
     const ot = parseFloat(settingsDraft.otMultiplier) || 1;
     const bal = settingsDraft.startingBalance.trim() === '' ? 0 : (parseFloat(settingsDraft.startingBalance) || 0);
     const balDate = settingsDraft.startingBalanceDate || null;
-    const contractYears = { ...(yearSettings[activeContractId] || {}) };
-    contractYears[editingSettingsYear] = { contractDays: cd, annualSalary: sal, otMultiplier: ot, startingBalance: bal, startingBalanceDate: balDate };
-    const next = { ...yearSettings, [activeContractId]: contractYears };
+    const next = { ...yearSettings, [editingSettingsYear]: { contractDays: cd, annualSalary: sal, otMultiplier: ot, startingBalance: bal, startingBalanceDate: balDate } };
     setYearSettings(next);
-    persist(contracts, next, entries, activeContractId, adjustments);
+    persist(tours, next, entries, adjustments, activeTour);
     setShowSettings(false);
   };
 
   const [newAdjAmount, setNewAdjAmount] = useState('');
   const [newAdjNote, setNewAdjNote] = useState('');
+  const yearAdjustments = adjustments[viewYear] || [];
 
   const addAdjustment = () => {
     const amt = parseFloat(newAdjAmount);
     if (!amt) return;
-    const yearList = [...((adjustments[activeContractId] && adjustments[activeContractId][viewYear]) || [])];
+    const yearList = [...(adjustments[viewYear] || [])];
     yearList.push({ id: makeId(), amount: amt, note: newAdjNote.trim() });
-    const nextContractAdj = { ...(adjustments[activeContractId] || {}), [viewYear]: yearList };
-    const next = { ...adjustments, [activeContractId]: nextContractAdj };
+    const next = { ...adjustments, [viewYear]: yearList };
     setAdjustments(next);
-    persist(contracts, yearSettings, entries, activeContractId, next);
+    persist(tours, yearSettings, entries, next, activeTour);
     setNewAdjAmount('');
     setNewAdjNote('');
   };
-
   const removeAdjustment = (id) => {
-    const yearList = ((adjustments[activeContractId] && adjustments[activeContractId][viewYear]) || []).filter(a => a.id !== id);
-    const nextContractAdj = { ...(adjustments[activeContractId] || {}), [viewYear]: yearList };
-    const next = { ...adjustments, [activeContractId]: nextContractAdj };
+    const yearList = (adjustments[viewYear] || []).filter(a => a.id !== id);
+    const next = { ...adjustments, [viewYear]: yearList };
     setAdjustments(next);
-    persist(contracts, yearSettings, entries, activeContractId, next);
+    persist(tours, yearSettings, entries, next, activeTour);
   };
 
   const exportData = () => {
-    const payload = JSON.stringify({ contracts, yearSettings, entries, adjustments, lastActiveContract: activeContractId }, null, 2);
+    const payload = JSON.stringify({ tours, yearSettings, entries, adjustments, activeTour }, null, 2);
     const blob = new Blob([payload], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -812,17 +880,13 @@ function App() {
     reader.onload = (e) => {
       try {
         const parsed = JSON.parse(e.target.result);
-        const nextContracts = parsed.contracts || {};
-        const nextYearSettings = parsed.yearSettings || {};
-        const nextEntries = parsed.entries || {};
-        const nextAdjustments = parsed.adjustments || {};
-        const nextActive = parsed.lastActiveContract || Object.keys(nextContracts)[0] || null;
-        setContracts(nextContracts);
-        setYearSettings(nextYearSettings);
-        setEntries(nextEntries);
-        setAdjustments(nextAdjustments);
-        setActiveContractId(nextActive);
-        persist(nextContracts, nextYearSettings, nextEntries, nextActive, nextAdjustments);
+        const nt = parsed.tours || {};
+        const nys = parsed.yearSettings || {};
+        const ne = normalizeEntries(parsed.entries || {});
+        const nAdj = parsed.adjustments || {};
+        const nActive = parsed.activeTour || Object.keys(nt)[0] || null;
+        setTours(nt); setYearSettings(nys); setEntries(ne); setAdjustments(nAdj); setActiveTour(nActive);
+        persist(nt, nys, ne, nAdj, nActive);
         alert('Backup imported.');
       } catch (err) {
         alert('That file could not be read as a backup.');
@@ -831,109 +895,95 @@ function App() {
     reader.readAsText(file);
   };
 
-  const effSettings = useMemo(() => effectiveSettingsFor(activeContractYearSettings, viewYear), [activeContractYearSettings, viewYear]);
+  const effSettings = useMemo(() => effectiveSettingsFor(yearSettings, viewYear), [yearSettings, viewYear]);
   const contractDays = effSettings ? effSettings.data.contractDays : 245;
   const usingFallbackYear = effSettings && effSettings.sourceYear !== viewYear ? effSettings.sourceYear : null;
-  const startingBalance = activeContractYearSettings[viewYear]?.startingBalance || 0;
-  const startingBalanceDate = activeContractYearSettings[viewYear]?.startingBalanceDate || null;
+  const startingBalance = yearSettings[viewYear]?.startingBalance || 0;
+  const startingBalanceDate = yearSettings[viewYear]?.startingBalanceDate || null;
+  const adjustmentTotal = yearAdjustments.reduce((s, a) => s + a.amount, 0);
 
-  const adjustmentTotal = activeContractAdjustments.reduce((sum, a) => sum + a.amount, 0);
-
+  // Total sums every tour's entry for every date — this is where stacking happens automatically.
   const totals = useMemo(() => {
     let total = startingBalance + adjustmentTotal;
-    let ytdThroughToday = startingBalance + adjustmentTotal;
-    const today = todayISO();
     const viewedYearPrefix = viewYear + '-';
-    Object.entries(activeContractEntries).forEach(([iso, e]) => {
-      if (startingBalanceDate && iso <= startingBalanceDate) return; // already covered by the lump-sum balance
-      const v = STATUS_VALUE[e.status] || 0;
-      if (iso.startsWith(viewedYearPrefix)) {
-        total += v;
-        if (iso <= today) ytdThroughToday += v;
-      }
+    Object.entries(entries).forEach(([iso, dayObj]) => {
+      if (startingBalanceDate && iso <= startingBalanceDate) return;
+      if (iso.startsWith(viewedYearPrefix)) total += dayTotal(dayObj);
     });
-    return { total, ytdThroughToday };
-  }, [activeContractEntries, viewYear, startingBalance, startingBalanceDate, adjustmentTotal]);
+    return { total };
+  }, [entries, viewYear, startingBalance, startingBalanceDate, adjustmentTotal]);
 
   const remaining = Math.max(0, contractDays - totals.total);
   const isOver = totals.total >= contractDays;
   const pct = Math.min(100, (totals.total / contractDays) * 100);
-
   const dayRate = effSettings && effSettings.data.annualSalary ? effSettings.data.annualSalary / contractDays : null;
   const extraDays = Math.max(0, totals.total - contractDays);
   const otMultiplier = effSettings?.data?.otMultiplier || 1;
   const extraPay = dayRate ? extraDays * dayRate * otMultiplier : null;
 
-  // Combined total across ALL contracts (active + archived) for the viewed year — this is what "stacking" looks like
-  const combinedTotal = useMemo(() => {
-    let sum = 0;
-    Object.keys(contracts).forEach(cId => {
-      if (contracts[cId].archived) return;
-      const cEntries = entries[cId] || {};
-      const cYearSettings = yearSettings[cId] || {};
-      const cAdj = ((adjustments[cId] && adjustments[cId][viewYear]) || []).reduce((s, a) => s + a.amount, 0);
-      let t = (cYearSettings[viewYear]?.startingBalance || 0) + cAdj;
-      const balDate = cYearSettings[viewYear]?.startingBalanceDate || null;
-      Object.entries(cEntries).forEach(([iso, e]) => {
-        if (balDate && iso <= balDate) return;
-        if (iso.startsWith(viewYear + '-')) t += STATUS_VALUE[e.status] || 0;
-      });
-      sum += t;
-    });
-    return sum;
-  }, [contracts, entries, yearSettings, adjustments, viewYear]);
+  const tourList = Object.entries(tours).map(([id, t]) => ({ id, ...t }));
+  const visibleTours = tourList.filter(t => !t.archived);
+  const tourName = (key) => key === NONE_KEY ? 'No tag' : (tours[key]?.name || 'Deleted tour');
 
-  const contractList = Object.entries(contracts).map(([id, c]) => ({ id, ...c }));
-  const visibleContracts = contractList.filter(c => !c.archived);
+  const byTourThisYear = useMemo(() => {
+    const totalsByTour = {};
+    const viewedYearPrefix = viewYear + '-';
+    Object.entries(entries).forEach(([iso, dayObj]) => {
+      if (!iso.startsWith(viewedYearPrefix)) return;
+      if (startingBalanceDate && iso <= startingBalanceDate) return;
+      Object.entries(dayObj).forEach(([tourKey, e]) => {
+        totalsByTour[tourKey] = (totalsByTour[tourKey] || 0) + (STATUS_VALUE[e.status] || 0);
+      });
+    });
+    return Object.entries(totalsByTour)
+      .map(([tourKey, days]) => ({ tourKey, name: tourName(tourKey), days }))
+      .sort((a, b) => b.days - a.days);
+  }, [entries, viewYear, startingBalanceDate, tours]);
 
   const yearSummaries = useMemo(() => {
-    return contractList.map(c => {
-      const cEntries = entries[c.id] || {};
-      const cYearSettings = yearSettings[c.id] || {};
-      const cAdjByYear = adjustments[c.id] || {};
-      const years = new Set([new Date().getFullYear()]);
-      Object.keys(cEntries).forEach(iso => years.add(parseInt(iso.slice(0,4), 10)));
-      Object.keys(cYearSettings).forEach(y => years.add(parseInt(y, 10)));
-      Object.keys(cAdjByYear).forEach(y => years.add(parseInt(y, 10)));
-      const rows = Array.from(years).sort((a,b) => b - a).map(y => {
-        const yAdj = (cAdjByYear[y] || []).reduce((s, a) => s + a.amount, 0);
-        let t = (cYearSettings[y]?.startingBalance || 0) + yAdj;
-        const balDate = cYearSettings[y]?.startingBalanceDate || null;
-        Object.entries(cEntries).forEach(([iso, e]) => {
-          if (balDate && iso <= balDate) return;
-          if (iso.startsWith(y + '-')) t += STATUS_VALUE[e.status] || 0;
-        });
-        const eff = effectiveSettingsFor(cYearSettings, y);
-        const cd = eff ? eff.data.contractDays : 245;
-        return { year: y, total: t, contractDays: cd, over: t >= cd };
+    const years = new Set([new Date().getFullYear()]);
+    Object.keys(entries).forEach(iso => years.add(parseInt(iso.slice(0,4), 10)));
+    Object.keys(yearSettings).forEach(y => years.add(parseInt(y, 10)));
+    Object.keys(adjustments).forEach(y => years.add(parseInt(y, 10)));
+    return Array.from(years).sort((a,b) => b - a).map(y => {
+      const yAdj = (adjustments[y] || []).reduce((s, a) => s + a.amount, 0);
+      let t = (yearSettings[y]?.startingBalance || 0) + yAdj;
+      const balDate = yearSettings[y]?.startingBalanceDate || null;
+      Object.entries(entries).forEach(([iso, dayObj]) => {
+        if (balDate && iso <= balDate) return;
+        if (iso.startsWith(y + '-')) t += dayTotal(dayObj);
       });
-      return { contractId: c.id, name: c.name, archived: c.archived, rows };
+      const eff = effectiveSettingsFor(yearSettings, y);
+      const cd = eff ? eff.data.contractDays : 245;
+      return { year: y, total: t, contractDays: cd, over: t >= cd };
     });
-  }, [contractList, entries, yearSettings, adjustments]);
+  }, [entries, yearSettings, adjustments]);
 
   const notesForYear = useMemo(() => {
     const list = [];
-    Object.entries(activeContractEntries).forEach(([iso, e]) => {
-      if (e.note && iso.startsWith(viewYear + '-')) list.push({ iso, note: e.note, status: e.status });
+    Object.entries(entries).forEach(([iso, dayObj]) => {
+      if (!iso.startsWith(viewYear + '-')) return;
+      Object.entries(dayObj).forEach(([tourKey, e]) => {
+        if (e.note) list.push({ iso, note: e.note, status: e.status, tourKey });
+      });
     });
     return list.sort((a,b) => a.iso.localeCompare(b.iso));
-  }, [activeContractEntries, viewYear]);
+  }, [entries, viewYear]);
 
   const todayIso = todayISO();
   const yesterdayIso = addDaysISO(todayIso, -1);
-  const showNudge = !nudgeDismissed && activeContractId && !activeContractEntries[yesterdayIso] && effSettings;
+  const showNudge = !nudgeDismissed && !entries[yesterdayIso] && effSettings;
 
   const daysSinceBackup = useMemo(() => {
     const ref = meta.lastExportAt || meta.installedAt;
     if (!ref) return 0;
     return Math.floor((Date.now() - ref) / 86400000);
   }, [meta]);
-  const showBackupNudge = !backupNudgeDismissed && Object.keys(contracts).length > 0 && daysSinceBackup >= 14;
+  const showBackupNudge = !backupNudgeDismissed && Object.keys(entries).length > 0 && daysSinceBackup >= 14;
 
   const firstOfMonth = new Date(viewYear, viewMonth, 1);
   const startWeekday = firstOfMonth.getDay();
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-
   const cells = [];
   for (let i = 0; i < startWeekday; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
@@ -948,7 +998,6 @@ function App() {
   };
   const changeYear = (delta) => setViewYear(y => y + delta);
 
-  const swipeRef = useRef({ x: 0, y: 0, active: false });
   const handleSwipeStart = (e) => {
     const t = e.touches ? e.touches[0] : e;
     swipeRef.current = { x: t.clientX, y: t.clientY, active: true };
@@ -959,16 +1008,8 @@ function App() {
     const dx = t.clientX - swipeRef.current.x;
     const dy = t.clientY - swipeRef.current.y;
     swipeRef.current.active = false;
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-      changeMonth(dx < 0 ? 1 : -1);
-    }
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) changeMonth(dx < 0 ? 1 : -1);
   };
-
-  const hapticTap = () => {
-    if (navigator.vibrate) { try { navigator.vibrate(8); } catch (e) {} }
-  };
-
-  const MOVE_CANCEL_PX = 10;
 
   const handlePressStart = (iso) => (e) => {
     const t = e.touches ? e.touches[0] : e;
@@ -978,37 +1019,47 @@ function App() {
     const rec = pressState.current[iso];
     if (!rec) return;
     const t = e.touches ? e.touches[0] : e;
-    if (Math.abs(t.clientX - rec.x) > MOVE_CANCEL_PX || Math.abs(t.clientY - rec.y) > MOVE_CANCEL_PX) {
-      rec.moved = true;
-    }
+    if (Math.abs(t.clientX - rec.x) > MOVE_CANCEL_PX || Math.abs(t.clientY - rec.y) > MOVE_CANCEL_PX) rec.moved = true;
   };
   const handlePressEnd = (iso) => (e) => {
     const rec = pressState.current[iso];
     if (!rec) return;
     delete pressState.current[iso];
-    if (rec.moved) return; // finger moved — this was a scroll/drag, not a deliberate tap
+    if (rec.moved) return;
     e.preventDefault();
     const elapsed = Date.now() - rec.time;
-    if (elapsed >= LONG_PRESS_MS) {
-      setDayDetailIso(iso);
-    } else {
-      cycleDay(iso);
-    }
+    if (elapsed >= LONG_PRESS_MS) setDayDetailIso(iso);
+    else cycleDay(iso);
   };
 
-  const needsSetup = visibleContracts.length === 0;
-  const detailEntry = dayDetailIso ? (activeContractEntries[dayDetailIso] || {}) : null;
-  const [detailNoteDraft, setDetailNoteDraft] = useState('');
-  useEffect(() => { if (dayDetailIso) setDetailNoteDraft(activeContractEntries[dayDetailIso]?.note || ''); }, [dayDetailIso]);
+  const needsSetup = Object.keys(yearSettings).length === 0;
+  const todayDayObj = entries[todayIso] || {};
+  const todayActiveEntry = todayDayObj[activeKey] || {};
+  const otherTodayEntries = Object.entries(todayDayObj).filter(([k]) => k !== activeKey);
+
+  const dayDetailObj = dayDetailIso ? (entries[dayDetailIso] || {}) : {};
+  const loggedKeysForDetail = Object.keys(dayDetailObj);
+  const addableTours = dayDetailIso
+    ? [{ id: NONE_KEY, name: 'No tag' }, ...visibleTours].filter(t => !loggedKeysForDetail.includes(t.id))
+    : [];
+  const [noteDrafts, setNoteDrafts] = useState({});
+  useEffect(() => {
+    if (dayDetailIso) {
+      const drafts = {};
+      Object.entries(dayDetailObj).forEach(([k, e]) => { drafts[k] = e.note || ''; });
+      setNoteDrafts(drafts);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayDetailIso]);
 
   const [todayNoteDraft, setTodayNoteDraft] = useState('');
-  useEffect(() => { setTodayNoteDraft(activeContractEntries[todayIso]?.note || ''); }, [entries, activeContractId, todayIso]);
+  useEffect(() => { setTodayNoteDraft(todayActiveEntry.note || ''); }, [entries, activeTour, todayIso]);
 
   return (
     <div className="wrap">
       {lastChange && (
         <div className="undo-toast">
-          <span>{friendlyDate(lastChange.iso)} marked {lastChange.newStatus || 'clear'}</span>
+          <span>{friendlyDate(lastChange.iso)} ({tourName(lastChange.tourKey)}) marked {lastChange.newStatus || 'clear'}</span>
           <button onClick={undoLastChange}>Undo</button>
         </div>
       )}
@@ -1022,14 +1073,12 @@ function App() {
               <line x1="6" y1="20" x2="6" y2="14"></line>
             </svg>
           </div>
-          {!needsSetup && (
-            <div className="icon-btn" onClick={() => openSettingsFor(viewYear)} title="Settings">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.11.35.31.66.6.87"></path>
-              </svg>
-            </div>
-          )}
+          <div className="icon-btn" onClick={() => openSettingsFor(viewYear)} title="Settings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.11.35.31.66.6.87"></path>
+            </svg>
+          </div>
         </div>
       </div>
 
@@ -1039,27 +1088,31 @@ function App() {
         </div>
       )}
 
-      {!needsSetup && (
+      {visibleTours.length > 0 && (
         <React.Fragment>
           <div className="pill-row">
-            {visibleContracts.map(c => (
-              <div key={c.id} className={"pill" + (c.id === activeContractId ? " active" : "")} onClick={() => switchContract(c.id)}>
-                {c.name}
+            <div className={"pill none-pill" + (!activeTour ? " active" : "")} onClick={() => switchActiveTour(null)}>No tag</div>
+            {visibleTours.map(t => (
+              <div key={t.id} className={"pill" + (t.id === activeTour ? " active" : "")} onClick={() => switchActiveTour(t.id)}>
+                {t.name}
               </div>
             ))}
-            <div className="pill add" onClick={() => setShowAddContract(true)}>+ Add contract</div>
+            <div className="pill add" onClick={() => setShowAddTour(true)}>+ Add tour</div>
           </div>
-          {visibleContracts.length > 1 && (
-            <div className="combined-line">Combined across all contracts this year: <b>{combinedTotal.toFixed(1)}</b> days</div>
-          )}
+          <div className="pill-hint">Switch tours and log the same date again to stack credit — your total below adds it all up.</div>
         </React.Fragment>
+      )}
+      {visibleTours.length === 0 && !needsSetup && (
+        <div className="pill-row">
+          <div className="pill add" onClick={() => setShowAddTour(true)}>+ Tag days by tour (optional)</div>
+        </div>
       )}
 
       {showNudge && (
         <div className="nudge">
           <div className="nudge-text">You haven't logged {friendlyDate(yesterdayIso)}</div>
           <div className="nudge-actions">
-            <button className="nudge-btn" onClick={() => setDayStatus(yesterdayIso, 'full')}>Mark full</button>
+            <button className="nudge-btn" onClick={() => updateDayTourEntry(yesterdayIso, activeKey, { status: 'full' }, true)}>Mark full</button>
             <button className="nudge-x" onClick={() => setNudgeDismissed(true)}>✕</button>
           </div>
         </div>
@@ -1078,22 +1131,27 @@ function App() {
       {!needsSetup && (
         <div className="today-card">
           <div className="today-card-head">
-            <span className="today-label">Log today</span>
+            <span className="today-label">Log today · {tourName(activeKey)}</span>
             <span className="today-date">{friendlyDate(todayIso)}</span>
           </div>
           <div className="day-detail">
-            <button className={activeContractEntries[todayIso]?.status === 'full' ? 'active-full' : ''} onClick={() => setDayStatus(todayIso, activeContractEntries[todayIso]?.status === 'full' ? null : 'full')}>Full</button>
-            <button className={activeContractEntries[todayIso]?.status === 'half' ? 'active-half' : ''} onClick={() => setDayStatus(todayIso, activeContractEntries[todayIso]?.status === 'half' ? null : 'half')}>Half</button>
-            <button className={activeContractEntries[todayIso]?.status === 'quarter' ? 'active-quarter' : ''} onClick={() => setDayStatus(todayIso, activeContractEntries[todayIso]?.status === 'quarter' ? null : 'quarter')}>Quarter</button>
+            <button className={todayActiveEntry.status === 'full' ? 'active-full' : ''} onClick={() => setTodayStatus(todayActiveEntry.status === 'full' ? null : 'full')}>Full</button>
+            <button className={todayActiveEntry.status === 'half' ? 'active-half' : ''} onClick={() => setTodayStatus(todayActiveEntry.status === 'half' ? null : 'half')}>Half</button>
+            <button className={todayActiveEntry.status === 'quarter' ? 'active-quarter' : ''} onClick={() => setTodayStatus(todayActiveEntry.status === 'quarter' ? null : 'quarter')}>Quarter</button>
           </div>
           <input
             type="text"
-            placeholder="Note (optional) — e.g. load-in, city, leg"
+            placeholder="Note (optional) — e.g. load-in, city"
             value={todayNoteDraft}
             onChange={(e) => setTodayNoteDraft(e.target.value)}
-            onBlur={() => setDayNote(todayIso, todayNoteDraft)}
+            onBlur={() => setEntryNote(todayIso, activeKey, todayNoteDraft)}
             style={{ width: '100%', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', color: 'var(--text)', fontFamily: 'Inter, sans-serif', fontSize: 13 }}
           />
+          {otherTodayEntries.length > 0 && (
+            <div className="also-logged">
+              Also logged today: {otherTodayEntries.map(([k, e]) => `${tourName(k)} (${e.status})`).join(', ')}
+            </div>
+          )}
         </div>
       )}
 
@@ -1102,7 +1160,7 @@ function App() {
           <div className="stat-row">
             <div>
               <div className="stat-main">{totals.total.toFixed(1)} <span className="of">/ {contractDays}</span></div>
-              <div className="stat-label">{contracts[activeContractId]?.name} · {viewYear === new Date().getFullYear() ? 'this year' : viewYear}</div>
+              <div className="stat-label">Days worked · {viewYear === new Date().getFullYear() ? 'this year' : viewYear}</div>
               {usingFallbackYear && (
                 <div className="stat-label" style={{marginTop: 2, color: 'var(--half)'}}>Using {usingFallbackYear} rates — tap ⚙ to set {viewYear}'s</div>
               )}
@@ -1126,13 +1184,13 @@ function App() {
               <span>Extra pay ({extraDays.toFixed(1)} days{otMultiplier !== 1 ? ' @ ' + otMultiplier + 'x' : ''})</span><b>${extraPay.toFixed(0)}</b>
             </div>
           )}
-          {activeContractAdjustments.length > 0 && (
+          {yearAdjustments.length > 0 && (
             <div className="earnings-panel" onClick={() => setShowAdjustments(true)} style={{cursor: 'pointer'}}>
               <span>Includes employer adjustment</span><b>{adjustmentTotal > 0 ? '+' : ''}{adjustmentTotal.toFixed(1)}</b>
             </div>
           )}
           <div className="earnings-panel" onClick={() => setShowAdjustments(true)} style={{cursor: 'pointer', color: 'var(--half)'}}>
-            <span>{activeContractAdjustments.length > 0 ? 'Manage adjustments' : '+ Add employer adjustment'}</span><b>›</b>
+            <span>{yearAdjustments.length > 0 ? 'Manage adjustments' : '+ Add employer adjustment'}</span><b>›</b>
           </div>
         </div>
       )}
@@ -1140,8 +1198,8 @@ function App() {
       {needsSetup && (
         <div className="stat-panel">
           <div className="stat-label" style={{marginBottom: 8}}>Set up your tracker</div>
-          <div style={{fontSize: 13, color: 'var(--text-muted)', marginBottom: 12}}>Create your first contract to start logging days.</div>
-          <button className="btn btn-primary" onClick={() => setShowAddContract(true)}>Get started</button>
+          <div style={{fontSize: 13, color: 'var(--text-muted)', marginBottom: 12}}>Set your contract days to start logging.</div>
+          <button className="btn btn-primary" onClick={() => openSettingsFor(viewYear)}>Get started</button>
         </div>
       )}
 
@@ -1173,11 +1231,13 @@ function App() {
         {cells.map((d, i) => {
           if (d === null) return <div key={i} className="cell empty-cell"></div>;
           const iso = isoOf(viewYear, viewMonth, d);
-          const entry = activeContractEntries[iso];
+          const dayObj = entries[iso] || {};
+          const entry = dayObj[activeKey];
           const status = entry?.status;
           const isToday = iso === todayIso;
           const isFuture = iso > todayIso;
           const isLocked = startingBalanceDate && iso <= startingBalanceDate;
+          const entryCount = Object.keys(dayObj).length;
           const cls = ['cell'];
           if (status && !isLocked) cls.push(status);
           if (isToday) cls.push('today');
@@ -1196,6 +1256,7 @@ function App() {
               onTouchEnd={isLocked ? undefined : handlePressEnd(iso)}
             >
               {d}
+              {entryCount > 1 && !isLocked && <span className="stack-badge">×{entryCount}</span>}
               {entry?.note && !isLocked && <span className="note-dot"></span>}
             </div>
           );
@@ -1211,22 +1272,22 @@ function App() {
         <span><span className="swatch" style={{background: 'var(--quarter)'}}></span>Quarter</span>
       </div>
 
-      <div className="hint">Tap to cycle Full → Half → Quarter → clear. Hold for notes.</div>
+      <div className="hint">Colors show {tourName(activeKey)}'s entry. A "×2" badge means another tour is also logged that day. Tap to cycle, hold for details.</div>
       </React.Fragment>
       )}
 
-      {showAddContract && (
-        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowAddContract(false); }}>
+      {showAddTour && (
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowAddTour(false); }}>
           <div className="modal">
-            <h2>New contract</h2>
-            <p className="desc">e.g. "Arirang — Main Tour" or "Retainer — Tour B". You'll set its contract days and salary next.</p>
+            <h2>New tour</h2>
+            <p className="desc">e.g. "Arirang" or "Gracie Abrams". Switch to it and log a date to stack credit on top of anything else logged that day.</p>
             <div className="field">
               <label>Name</label>
-              <input type="text" value={newContractName} onChange={e => setNewContractName(e.target.value)} placeholder="Contract name" autoFocus />
+              <input type="text" value={newTourName} onChange={e => setNewTourName(e.target.value)} placeholder="Tour name" autoFocus />
             </div>
             <div className="btn-row">
-              <button className="btn btn-ghost" onClick={() => setShowAddContract(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={createContract}>Create</button>
+              <button className="btn btn-ghost" onClick={() => setShowAddTour(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={createTour}>Create</button>
             </div>
           </div>
         </div>
@@ -1238,8 +1299,8 @@ function App() {
             <h2>Employer adjustments · {viewYear}</h2>
             <p className="desc">For days your boss counts differently than you do — add the gap here instead of tapping a specific date. This directly changes your days-worked total above. Positive numbers add days, negative numbers subtract.</p>
 
-            {activeContractAdjustments.length === 0 && <div className="notes-empty">No adjustments logged for {viewYear} yet.</div>}
-            {activeContractAdjustments.map(a => (
+            {yearAdjustments.length === 0 && <div className="notes-empty">No adjustments logged for {viewYear} yet.</div>}
+            {yearAdjustments.map(a => (
               <div className="manage-contract-row" key={a.id}>
                 <input type="text" readOnly value={(a.amount > 0 ? '+' : '') + a.amount + ' days' + (a.note ? ' — ' + a.note : '')} />
                 <button onClick={() => removeAdjustment(a.id)}>Remove</button>
@@ -1261,18 +1322,6 @@ function App() {
               <button className="btn btn-ghost" onClick={() => setShowAdjustments(false)}>Close</button>
               <button className="btn btn-primary" onClick={addAdjustment}>Add adjustment</button>
             </div>
-
-            {activeContractAdjustments.length > 0 && (
-              <React.Fragment>
-                <hr className="divider" />
-                <div className="earnings-panel">
-                  <span>Adjustment total</span><b>{adjustmentTotal > 0 ? '+' : ''}{adjustmentTotal.toFixed(1)} days</b>
-                </div>
-                <div className="earnings-panel">
-                  <span>Your days worked (with adjustment)</span><b>{totals.total.toFixed(1)}</b>
-                </div>
-              </React.Fragment>
-            )}
           </div>
         </div>
       )}
@@ -1280,8 +1329,8 @@ function App() {
       {showSettings && (
         <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
           <div className="modal">
-            <h2>{contracts[activeContractId]?.name} · {editingSettingsYear}</h2>
-            <p className="desc">These rates apply to this contract for {editingSettingsYear} only. New years start from your most recent year's numbers until you change them.</p>
+            <h2>{editingSettingsYear} contract settings</h2>
+            <p className="desc">One shared total for the year — these rates apply no matter which tour you're tagging days with. New years start from your most recent year's numbers until you change them.</p>
             <div className="field">
               <label>Contract days per year</label>
               <input type="number" inputMode="decimal" value={settingsDraft.contractDays}
@@ -1324,14 +1373,16 @@ function App() {
             </div>
 
             <hr className="divider" />
-            <h3>Contracts</h3>
-            {contractList.map(c => (
-              <div className={"manage-contract-row" + (c.archived ? " archived" : "")} key={c.id}>
-                <input type="text" value={c.name} onChange={e => renameContract(c.id, e.target.value)} />
-                <button onClick={() => toggleArchiveContract(c.id)}>{c.archived ? 'Unarchive' : 'Archive'}</button>
+            <h3>Tours</h3>
+            <p className="desc" style={{marginBottom: 10}}>Labels only. Switch tours and log a date again to stack credit for that day.</p>
+            {tourList.length === 0 && <div className="notes-empty">No tours added yet.</div>}
+            {tourList.map(t => (
+              <div className={"manage-contract-row" + (t.archived ? " archived" : "")} key={t.id}>
+                <input type="text" value={t.name} onChange={e => renameTour(t.id, e.target.value)} />
+                <button onClick={() => toggleArchiveTour(t.id)}>{t.archived ? 'Unarchive' : 'Archive'}</button>
               </div>
             ))}
-            <button className="btn btn-ghost" style={{width: '100%', marginTop: 4}} onClick={() => { setShowSettings(false); setShowAddContract(true); }}>+ Add another contract</button>
+            <button className="btn btn-ghost" style={{width: '100%', marginTop: 4}} onClick={() => { setShowSettings(false); setShowAddTour(true); }}>+ Add a tour</button>
 
             <hr className="divider" />
             <h3>Backup</h3>
@@ -1342,7 +1393,7 @@ function App() {
               <input ref={fileInputRef} type="file" accept=".json,application/json" style={{ display: 'none' }}
                 onChange={(e) => {
                   if (e.target.files[0]) {
-                    const ok = window.confirm('This replaces all your current contracts, entries, and settings with what\'s in this backup file. This can\'t be undone. Continue?');
+                    const ok = window.confirm('This replaces all your current tours, entries, and settings with what\'s in this backup file. This can\'t be undone. Continue?');
                     if (ok) importData(e.target.files[0]);
                   }
                   e.target.value = '';
@@ -1356,29 +1407,37 @@ function App() {
         <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowSummary(false); }}>
           <div className="modal">
             <h2>Year summary</h2>
-            <p className="desc">Total days logged against each contract's own terms.</p>
-            {yearSummaries.map(cs => (
-              <div className="summary-contract-block" key={cs.contractId}>
-                <h3>{cs.name}{cs.archived ? ' (archived)' : ''}</h3>
-                {cs.rows.map(y => (
-                  <div className="summary-row" key={y.year}>
-                    <div className="summary-year" onClick={() => { setShowSummary(false); switchContract(cs.contractId); openSettingsFor(y.year, cs.contractId); }} style={{cursor: 'pointer'}}>{y.year}</div>
-                    <div className={"summary-stats" + (y.over ? " over" : "")}>
-                      <b>{y.total.toFixed(1)}</b> / {y.contractDays} days
-                      {y.over && <div>over by {(y.total - y.contractDays).toFixed(1)}</div>}
-                    </div>
-                  </div>
-                ))}
+            <p className="desc">One total per year, against your contract terms — includes stacked days from every tour.</p>
+            {yearSummaries.map(y => (
+              <div className="summary-row" key={y.year}>
+                <div className="summary-year" onClick={() => { setShowSummary(false); setViewYear(y.year); openSettingsFor(y.year); }} style={{cursor: 'pointer'}}>{y.year}</div>
+                <div className={"summary-stats" + (y.over ? " over" : "")}>
+                  <b>{y.total.toFixed(1)}</b> / {y.contractDays} days
+                  {y.over && <div>over by {(y.total - y.contractDays).toFixed(1)}</div>}
+                </div>
               </div>
             ))}
 
+            {byTourThisYear.length > 0 && (
+              <React.Fragment>
+                <hr className="divider" />
+                <h3>By tour · {viewYear}</h3>
+                {byTourThisYear.map(t => (
+                  <div className="summary-row" key={t.tourKey}>
+                    <div className="summary-year" style={{fontSize: 13}}>{t.name}</div>
+                    <div className="summary-stats"><b>{t.days.toFixed(1)}</b> days</div>
+                  </div>
+                ))}
+              </React.Fragment>
+            )}
+
             <hr className="divider" />
-            <h3>Notes · {contracts[activeContractId]?.name} · {viewYear}</h3>
+            <h3>Notes · {viewYear}</h3>
             {notesForYear.length === 0 && <div className="notes-empty">No notes logged for {viewYear} yet.</div>}
-            {notesForYear.map(n => (
-              <div className="notes-list-item" key={n.iso}>
+            {notesForYear.map((n, idx) => (
+              <div className="notes-list-item" key={n.iso + '_' + n.tourKey + '_' + idx}>
                 <div className="notes-list-date">
-                  <span>{friendlyDate(n.iso)}</span>
+                  <span>{friendlyDate(n.iso)} · {tourName(n.tourKey)}</span>
                   <span style={{textTransform: 'capitalize'}}>{n.status}</span>
                 </div>
                 <div className="notes-list-text">{n.note}</div>
@@ -1396,19 +1455,48 @@ function App() {
         <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setDayDetailIso(null); }}>
           <div className="modal">
             <h2>{friendlyDate(dayDetailIso)}</h2>
-            <p className="desc">Set the day type and add an optional note for {contracts[activeContractId]?.name}.</p>
-            <div className="day-detail">
-              <button className={detailEntry?.status === 'full' ? 'active-full' : ''} onClick={() => setDayStatus(dayDetailIso, detailEntry?.status === 'full' ? null : 'full')}>Full</button>
-              <button className={detailEntry?.status === 'half' ? 'active-half' : ''} onClick={() => setDayStatus(dayDetailIso, detailEntry?.status === 'half' ? null : 'half')}>Half</button>
-              <button className={detailEntry?.status === 'quarter' ? 'active-quarter' : ''} onClick={() => setDayStatus(dayDetailIso, detailEntry?.status === 'quarter' ? null : 'quarter')}>Quarter</button>
-            </div>
-            <div className="field">
-              <label>Note</label>
-              <textarea value={detailNoteDraft} onChange={(e) => setDetailNoteDraft(e.target.value)} placeholder="e.g. Arirang EU leg, load-in"></textarea>
-            </div>
+            <p className="desc">Every tour logged for this date, and its own status and note. Add another to stack credit.</p>
+            <div className="day-total-line">Total for this date: <b>{dayTotal(dayDetailObj).toFixed(2)}</b> days</div>
+
+            {loggedKeysForDetail.length === 0 && <div className="notes-empty">Nothing logged for this date yet.</div>}
+            {loggedKeysForDetail.map(key => {
+              const e = dayDetailObj[key];
+              return (
+                <div className="entry-block" key={key}>
+                  <div className="entry-block-head">
+                    <span className="entry-block-title">{tourName(key)}</span>
+                    <button className="entry-block-remove" onClick={() => removeEntry(dayDetailIso, key)}>Remove</button>
+                  </div>
+                  <div className="day-detail" style={{marginBottom: 8}}>
+                    <button className={e.status === 'full' ? 'active-full' : ''} onClick={() => setEntryStatus(dayDetailIso, key, e.status === 'full' ? null : 'full')}>Full</button>
+                    <button className={e.status === 'half' ? 'active-half' : ''} onClick={() => setEntryStatus(dayDetailIso, key, e.status === 'half' ? null : 'half')}>Half</button>
+                    <button className={e.status === 'quarter' ? 'active-quarter' : ''} onClick={() => setEntryStatus(dayDetailIso, key, e.status === 'quarter' ? null : 'quarter')}>Quarter</button>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Note (optional)"
+                    value={noteDrafts[key] ?? ''}
+                    onChange={(ev) => setNoteDrafts(d => ({ ...d, [key]: ev.target.value }))}
+                    onBlur={() => setEntryNote(dayDetailIso, key, noteDrafts[key] || '')}
+                    style={{ width: '100%', background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 10px', color: 'var(--text)', fontFamily: 'Inter, sans-serif', fontSize: 13 }}
+                  />
+                </div>
+              );
+            })}
+
+            {addableTours.length > 0 && (
+              <React.Fragment>
+                <div style={{fontSize: 11, color: 'var(--text-muted)', margin: '12px 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em'}}>+ Also log for</div>
+                <div className="tour-chip-row">
+                  {addableTours.map(t => (
+                    <div key={t.id} className="tour-chip" onClick={() => addEntryForTour(dayDetailIso, t.id)}>{t.name}</div>
+                  ))}
+                </div>
+              </React.Fragment>
+            )}
+
             <div className="btn-row">
-              <button className="btn btn-ghost" onClick={() => setDayDetailIso(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={() => { setDayNote(dayDetailIso, detailNoteDraft); setDayDetailIso(null); }}>Save</button>
+              <button className="btn btn-primary" onClick={() => setDayDetailIso(null)}>Done</button>
             </div>
           </div>
         </div>
@@ -1427,6 +1515,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
       navigator.serviceWorker.register('./service-worker.js').catch(() => {});
     });
   }
+</script>
 
 </body>
 </html>
