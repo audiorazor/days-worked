@@ -803,9 +803,46 @@ function App() {
   };
 
   const toggleArchiveTour = (id) => {
-    const nextTours = { ...tours, [id]: { ...tours[id], archived: !tours[id].archived } };
+    const willBeArchived = !tours[id].archived;
+    const nextTours = { ...tours, [id]: { ...tours[id], archived: willBeArchived } };
+    // If you archive the tour you're currently logging under, fall back to "No tag"
+    // instead of silently staying pointed at a tour that's no longer shown.
+    const nextActiveTour = (willBeArchived && activeTour === id) ? null : activeTour;
     setTours(nextTours);
-    persist(nextTours, yearSettings, entries, adjustments, activeTour);
+    setActiveTour(nextActiveTour);
+    persist(nextTours, yearSettings, entries, adjustments, nextActiveTour);
+  };
+
+  const deleteTour = (id) => {
+    const name = tours[id]?.name || 'this tour';
+    const ok = window.confirm(`Delete "${name}"? Any days logged under it will show as "No tag" instead — the day credit itself isn't lost. This can't be undone.`);
+    if (!ok) return;
+
+    const nextTours = { ...tours };
+    delete nextTours[id];
+
+    const nextEntries = {};
+    Object.entries(entries).forEach(([iso, dayObj]) => {
+      if (!(id in dayObj)) { nextEntries[iso] = dayObj; return; }
+      const day = { ...dayObj };
+      const entry = day[id];
+      delete day[id];
+      if (day[NONE_KEY]) {
+        // Another entry already sits under "No tag" for this date — keep this one
+        // under its old id rather than overwriting/losing data. It'll show as
+        // "Deleted tour" just for this specific date.
+        day[id] = entry;
+      } else {
+        day[NONE_KEY] = entry;
+      }
+      nextEntries[iso] = day;
+    });
+
+    const nextActiveTour = activeTour === id ? null : activeTour;
+    setTours(nextTours);
+    setEntries(nextEntries);
+    setActiveTour(nextActiveTour);
+    persist(nextTours, yearSettings, nextEntries, adjustments, nextActiveTour);
   };
 
   const openSettingsFor = (year) => {
@@ -1380,6 +1417,7 @@ function App() {
               <div className={"manage-contract-row" + (t.archived ? " archived" : "")} key={t.id}>
                 <input type="text" value={t.name} onChange={e => renameTour(t.id, e.target.value)} />
                 <button onClick={() => toggleArchiveTour(t.id)}>{t.archived ? 'Unarchive' : 'Archive'}</button>
+                <button onClick={() => deleteTour(t.id)} style={{color: 'var(--danger)', borderColor: 'var(--danger)'}}>Delete</button>
               </div>
             ))}
             <button className="btn btn-ghost" style={{width: '100%', marginTop: 4}} onClick={() => { setShowSettings(false); setShowAddTour(true); }}>+ Add a tour</button>
