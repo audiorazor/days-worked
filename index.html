@@ -760,8 +760,10 @@ function App() {
   };
 
   const activeKey = activeTour || NONE_KEY;
+  const canLog = !!activeTour;
 
   const cycleDay = (iso) => {
+    if (!canLog) return;
     const current = entries[iso]?.[activeKey]?.status || null;
     const idx = STATUS_CYCLE.indexOf(current);
     const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
@@ -769,6 +771,7 @@ function App() {
     hapticTap();
   };
   const setTodayStatus = (status) => {
+    if (!canLog) return;
     updateDayTourEntry(todayISO(), activeKey, { status }, true);
     hapticTap();
   };
@@ -1011,7 +1014,7 @@ function App() {
 
   const todayIso = todayISO();
   const yesterdayIso = addDaysISO(todayIso, -1);
-  const showNudge = !nudgeDismissed && !entries[yesterdayIso] && effSettings;
+  const showNudge = !nudgeDismissed && !entries[yesterdayIso] && effSettings && canLog;
 
   const daysSinceBackup = useMemo(() => {
     const ref = meta.lastExportAt || meta.installedAt;
@@ -1079,7 +1082,7 @@ function App() {
   const dayDetailObj = dayDetailIso ? (entries[dayDetailIso] || {}) : {};
   const loggedKeysForDetail = Object.keys(dayDetailObj);
   const addableTours = dayDetailIso
-    ? [{ id: NONE_KEY, name: 'No tag' }, ...visibleTours].filter(t => !loggedKeysForDetail.includes(t.id))
+    ? visibleTours.filter(t => !loggedKeysForDetail.includes(t.id))
     : [];
   const [noteDrafts, setNoteDrafts] = useState({});
   useEffect(() => {
@@ -1130,7 +1133,6 @@ function App() {
       {visibleTours.length > 0 && (
         <React.Fragment>
           <div className="pill-row">
-            <div className={"pill none-pill" + (!activeTour ? " active" : "")} onClick={() => switchActiveTour(null)}>No tag</div>
             {visibleTours.map(t => (
               <div key={t.id} className={"pill" + (t.id === activeTour ? " active" : "")} onClick={() => switchActiveTour(t.id)}>
                 {t.name}
@@ -1138,12 +1140,12 @@ function App() {
             ))}
             <div className="pill add" onClick={() => setShowAddTour(true)}>+ Add tour</div>
           </div>
-          <div className="pill-hint">Switch tours and log the same date again to stack credit — your total below adds it all up.</div>
+          <div className="pill-hint">{activeTour ? "Switch tours and log the same date again to stack credit — your total below adds it all up." : "Select a tour above to start logging."}</div>
         </React.Fragment>
       )}
       {visibleTours.length === 0 && !needsSetup && (
         <div className="pill-row">
-          <div className="pill add" onClick={() => setShowAddTour(true)}>+ Tag days by tour (optional)</div>
+          <div className="pill add" onClick={() => setShowAddTour(true)}>+ Add a tour to start logging</div>
         </div>
       )}
 
@@ -1167,7 +1169,7 @@ function App() {
         </div>
       )}
 
-      {!needsSetup && (
+      {!needsSetup && canLog && (
         <div className="today-card">
           <div className="today-card-head">
             <span className="today-label">Log today · {tourName(activeKey)}</span>
@@ -1189,6 +1191,20 @@ function App() {
           {otherTodayEntries.length > 0 && (
             <div className="also-logged">
               Also logged today: {otherTodayEntries.map(([k, e]) => `${tourName(k)} (${e.status})`).join(', ')}
+            </div>
+          )}
+        </div>
+      )}
+      {!needsSetup && !canLog && visibleTours.length > 0 && (
+        <div className="today-card">
+          <div className="today-card-head">
+            <span className="today-label">Log today</span>
+            <span className="today-date">{friendlyDate(todayIso)}</span>
+          </div>
+          <div style={{fontSize: 13, color: 'var(--text-muted)'}}>Select a tour above to log today's day.</div>
+          {Object.keys(todayDayObj).length > 0 && (
+            <div className="also-logged">
+              Already logged today: {Object.entries(todayDayObj).map(([k, e]) => `${tourName(k)} (${e.status})`).join(', ')}
             </div>
           )}
         </div>
@@ -1311,7 +1327,11 @@ function App() {
         <span><span className="swatch" style={{background: 'var(--quarter)'}}></span>Quarter</span>
       </div>
 
-      <div className="hint">Colors show {tourName(activeKey)}'s entry. A "×2" badge means another tour is also logged that day. Tap to cycle, hold for details.</div>
+      <div className="hint">
+        {canLog
+          ? `Colors show ${tourName(activeKey)}'s entry. A "×2" badge means another tour is also logged that day. Tap to cycle, hold for details.`
+          : 'Select a tour above to log a day. Hold any date to view or edit what\'s already logged.'}
+      </div>
       </React.Fragment>
       )}
 
