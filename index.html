@@ -860,7 +860,7 @@ function App() {
     setEditingSettingsYear(year);
     const eff = effectiveSettingsFor(yearSettings, year);
     const balVal = yearSettings[year]?.startingBalance;
-    const stdVal = yearSettings[year]?.standardDays;
+    const stdVal = eff?.data?.standardDays;
     setSettingsDraft({
       contractDays: String(eff?.data?.contractDays ?? 245),
       annualSalary: eff?.data?.annualSalary != null ? String(eff.data.annualSalary) : '',
