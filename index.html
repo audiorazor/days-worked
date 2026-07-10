@@ -698,7 +698,7 @@ function App() {
   const [newTourName, setNewTourName] = useState('');
   const [dayDetailIso, setDayDetailIso] = useState(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
-  const [settingsDraft, setSettingsDraft] = useState({ contractDays: '245', annualSalary: '', startingBalance: '', startingBalanceDate: '' });
+  const [settingsDraft, setSettingsDraft] = useState({ contractDays: '245', annualSalary: '', standardDays: '', startingBalance: '', startingBalanceDate: '' });
   const fileInputRef = useRef(null);
   const pressState = useRef({});
   const swipeRef = useRef({ x: 0, y: 0, active: false });
@@ -860,13 +860,15 @@ function App() {
     setEditingSettingsYear(year);
     const eff = effectiveSettingsFor(yearSettings, year);
     const balVal = yearSettings[year]?.startingBalance;
+    const stdVal = yearSettings[year]?.standardDays;
     setSettingsDraft({
       contractDays: String(eff?.data?.contractDays ?? 245),
       annualSalary: eff?.data?.annualSalary != null ? String(eff.data.annualSalary) : '',
+      standardDays: stdVal != null ? String(stdVal) : '',
       startingBalance: balVal != null ? String(balVal) : '',
       startingBalanceDate: yearSettings[year]?.startingBalanceDate || ''
     });
-    setShowAdvancedSettings(!!balVal);
+    setShowAdvancedSettings(!!balVal || !!stdVal);
     setShowSettings(true);
   };
 
@@ -874,9 +876,11 @@ function App() {
     const cdParsed = parseFloat(settingsDraft.contractDays);
     const cd = isNaN(cdParsed) ? 245 : cdParsed;
     const sal = settingsDraft.annualSalary.trim() === '' ? null : parseFloat(settingsDraft.annualSalary);
+    const stdParsed = parseFloat(settingsDraft.standardDays);
+    const std = settingsDraft.standardDays.trim() === '' || isNaN(stdParsed) ? null : stdParsed;
     const bal = settingsDraft.startingBalance.trim() === '' ? 0 : (parseFloat(settingsDraft.startingBalance) || 0);
     const balDate = settingsDraft.startingBalanceDate || null;
-    const next = { ...yearSettings, [editingSettingsYear]: { contractDays: cd, annualSalary: sal, startingBalance: bal, startingBalanceDate: balDate } };
+    const next = { ...yearSettings, [editingSettingsYear]: { contractDays: cd, annualSalary: sal, standardDays: std, startingBalance: bal, startingBalanceDate: balDate } };
     setYearSettings(next);
     persist(tours, next, entries, adjustments, activeTour);
     setShowSettings(false);
@@ -962,7 +966,8 @@ function App() {
   const remaining = Math.max(0, contractDays - totals.total);
   const isOver = totals.total >= contractDays;
   const pct = Math.min(100, (totals.total / contractDays) * 100);
-  const dayRate = effSettings && effSettings.data.annualSalary ? effSettings.data.annualSalary / contractDays : null;
+  const payRateDays = effSettings?.data?.standardDays || contractDays;
+  const dayRate = effSettings && effSettings.data.annualSalary ? effSettings.data.annualSalary / payRateDays : null;
   const extraDays = Math.max(0, totals.total - contractDays);
   const extraPay = dayRate ? extraDays * dayRate : null;
 
@@ -1420,11 +1425,17 @@ function App() {
             </div>
 
             <div className="advanced-toggle" onClick={() => setShowAdvancedSettings(v => !v)}>
-              {showAdvancedSettings ? '– Hide advanced' : '+ Advanced (starting balance)'}
+              {showAdvancedSettings ? '– Hide advanced' : '+ Advanced (prorated years, starting balance)'}
             </div>
 
             {showAdvancedSettings && (
               <React.Fragment>
+                <div className="field">
+                  <label>Standard days for pay rate (optional)</label>
+                  <input type="number" inputMode="decimal" placeholder="e.g. 245" value={settingsDraft.standardDays}
+                    onChange={e => setSettingsDraft(s => ({ ...s, standardDays: e.target.value }))} />
+                  <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>If contract days above is prorated (e.g. starting mid-year), enter the normal full-year day count here so day rate still calculates correctly. Leave blank if contract days is already a normal full year.</div>
+                </div>
                 <div className="field">
                   <label>Starting balance for {editingSettingsYear} (optional)</label>
                   <input type="number" inputMode="decimal" step="0.5" placeholder="Days already worked before tracking" value={settingsDraft.startingBalance}
