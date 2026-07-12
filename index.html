@@ -690,6 +690,8 @@ function App() {
   const [viewMonth, setViewMonth] = useState(new Date().getMonth());
   const [showSettings, setShowSettings] = useState(false);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [showToursSection, setShowToursSection] = useState(false);
+  const [showBackupSection, setShowBackupSection] = useState(false);
   const [editingSettingsYear, setEditingSettingsYear] = useState(new Date().getFullYear());
   const [showSummary, setShowSummary] = useState(false);
   const [hideMoney, setHideMoney] = useState(false);
@@ -698,7 +700,7 @@ function App() {
   const [newTourName, setNewTourName] = useState('');
   const [dayDetailIso, setDayDetailIso] = useState(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
-  const [settingsDraft, setSettingsDraft] = useState({ contractDays: '245', annualSalary: '', standardDays: '', startingBalance: '', startingBalanceDate: '' });
+  const [settingsDraft, setSettingsDraft] = useState({ contractDays: '245', annualSalary: '', standardDays: '', startingBalance: '', startingBalanceDate: '', startingBalanceTour: '' });
   const fileInputRef = useRef(null);
   const pressState = useRef({});
   const swipeRef = useRef({ x: 0, y: 0, active: false });
@@ -866,7 +868,8 @@ function App() {
       annualSalary: eff?.data?.annualSalary != null ? String(eff.data.annualSalary) : '',
       standardDays: stdVal != null ? String(stdVal) : '',
       startingBalance: balVal != null ? String(balVal) : '',
-      startingBalanceDate: yearSettings[year]?.startingBalanceDate || ''
+      startingBalanceDate: yearSettings[year]?.startingBalanceDate || '',
+      startingBalanceTour: yearSettings[year]?.startingBalanceTour || ''
     });
     setShowAdvancedSettings(!!balVal || !!stdVal);
     setShowSettings(true);
@@ -880,7 +883,8 @@ function App() {
     const std = settingsDraft.standardDays.trim() === '' || isNaN(stdParsed) ? null : stdParsed;
     const bal = settingsDraft.startingBalance.trim() === '' ? 0 : (parseFloat(settingsDraft.startingBalance) || 0);
     const balDate = settingsDraft.startingBalanceDate || null;
-    const next = { ...yearSettings, [editingSettingsYear]: { contractDays: cd, annualSalary: sal, standardDays: std, startingBalance: bal, startingBalanceDate: balDate } };
+    const balTour = settingsDraft.startingBalanceTour || null;
+    const next = { ...yearSettings, [editingSettingsYear]: { contractDays: cd, annualSalary: sal, standardDays: std, startingBalance: bal, startingBalanceDate: balDate, startingBalanceTour: balTour } };
     setYearSettings(next);
     persist(tours, next, entries, adjustments, activeTour);
     setShowSettings(false);
@@ -950,6 +954,7 @@ function App() {
   const usingFallbackYear = effSettings && effSettings.sourceYear !== viewYear ? effSettings.sourceYear : null;
   const startingBalance = yearSettings[viewYear]?.startingBalance || 0;
   const startingBalanceDate = yearSettings[viewYear]?.startingBalanceDate || null;
+  const startingBalanceTour = yearSettings[viewYear]?.startingBalanceTour || null;
   const adjustmentTotal = yearAdjustments.reduce((s, a) => s + a.amount, 0);
 
   // Total sums every tour's entry for every date — this is where stacking happens automatically.
@@ -985,10 +990,14 @@ function App() {
         totalsByTour[tourKey] = (totalsByTour[tourKey] || 0) + (STATUS_VALUE[e.status] || 0);
       });
     });
+    if (startingBalance > 0) {
+      const balKey = startingBalanceTour || '__balance__';
+      totalsByTour[balKey] = (totalsByTour[balKey] || 0) + startingBalance;
+    }
     return Object.entries(totalsByTour)
-      .map(([tourKey, days]) => ({ tourKey, name: tourName(tourKey), days }))
+      .map(([tourKey, days]) => ({ tourKey, name: tourKey === '__balance__' ? 'Starting balance (unassigned)' : tourName(tourKey), days }))
       .sort((a, b) => b.days - a.days);
-  }, [entries, viewYear, startingBalanceDate, tours]);
+  }, [entries, viewYear, startingBalanceDate, startingBalance, startingBalanceTour, tours]);
 
   const yearSummaries = useMemo(() => {
     const years = new Set([new Date().getFullYear()]);
@@ -1172,7 +1181,18 @@ function App() {
         </div>
       )}
 
-      {showNudge && (
+      {showNudge && showBackupNudge && (
+        <div className="nudge">
+          <div className="nudge-text">You haven't logged {friendlyDate(yesterdayIso)}, and it's been {daysSinceBackup} days since your last backup.</div>
+          <div className="nudge-actions">
+            <button className="nudge-btn" onClick={() => updateDayTourEntry(yesterdayIso, activeKey, { status: 'full' }, true)}>Mark full</button>
+            <button className="nudge-btn" onClick={exportData}>Export</button>
+            <button className="nudge-x" onClick={() => { setNudgeDismissed(true); setBackupNudgeDismissed(true); }}>✕</button>
+          </div>
+        </div>
+      )}
+
+      {showNudge && !showBackupNudge && (
         <div className="nudge">
           <div className="nudge-text">You haven't logged {friendlyDate(yesterdayIso)}</div>
           <div className="nudge-actions">
@@ -1182,7 +1202,7 @@ function App() {
         </div>
       )}
 
-      {showBackupNudge && (
+      {!showNudge && showBackupNudge && (
         <div className="nudge backup-nudge">
           <div className="nudge-text">{meta.lastExportAt ? `No backup in ${daysSinceBackup} days` : `You've never exported a backup`} — your data only lives on this device.</div>
           <div className="nudge-actions">
@@ -1264,12 +1284,14 @@ function App() {
           )}
           {yearAdjustments.length > 0 && (
             <div className="earnings-panel" onClick={() => setShowAdjustments(true)} style={{cursor: 'pointer'}}>
-              <span>Includes employer adjustment</span><b>{adjustmentTotal > 0 ? '+' : ''}{adjustmentTotal.toFixed(1)}</b>
+              <span>Employer adjustment ({adjustmentTotal > 0 ? '+' : ''}{adjustmentTotal.toFixed(1)}) · Manage</span><b>›</b>
             </div>
           )}
-          <div className="earnings-panel" onClick={() => setShowAdjustments(true)} style={{cursor: 'pointer', color: 'var(--half)'}}>
-            <span>{yearAdjustments.length > 0 ? 'Manage adjustments' : '+ Add employer adjustment'}</span><b>›</b>
-          </div>
+          {yearAdjustments.length === 0 && (
+            <div style={{marginTop: 10, fontSize: 11, color: 'var(--half)', cursor: 'pointer'}} onClick={() => setShowAdjustments(true)}>
+              + Add employer adjustment
+            </div>
+          )}
         </div>
       )}
 
@@ -1352,8 +1374,8 @@ function App() {
 
       <div className="hint">
         {canLog
-          ? `Colors show ${tourName(activeKey)}'s entry. A "×2" badge means another tour is also logged that day. Tap to cycle, hold for details.`
-          : 'Select a tour above to log a day. Hold any date to view or edit what\'s already logged.'}
+          ? 'Tap to cycle Full → Half → Quarter → clear. Hold for details. A "×2" badge means another tour is also logged that day.'
+          : 'Hold any date to view or edit what\'s already logged.'}
       </div>
       </React.Fragment>
       )}
@@ -1447,6 +1469,20 @@ function App() {
                     onChange={e => setSettingsDraft(s => ({ ...s, startingBalanceDate: e.target.value }))} />
                   <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>Dates on or before this are locked on the calendar so they can't get double-counted.</div>
                 </div>
+                {visibleTours.length > 0 && (
+                  <div className="field">
+                    <label>Attribute starting balance to a tour (optional)</label>
+                    <div className="tour-chip-row">
+                      {visibleTours.map(t => (
+                        <div key={t.id} className={"tour-chip" + (settingsDraft.startingBalanceTour === t.id ? " active" : "")}
+                          onClick={() => setSettingsDraft(s => ({ ...s, startingBalanceTour: s.startingBalanceTour === t.id ? '' : t.id }))}>
+                          {t.name}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>Shows up in that tour's total on the Year Summary "By tour" breakdown. Leave unselected to keep it unassigned.</div>
+                  </div>
+                )}
               </React.Fragment>
             )}
 
@@ -1456,33 +1492,45 @@ function App() {
             </div>
 
             <hr className="divider" />
-            <h3>Tours</h3>
-            <p className="desc" style={{marginBottom: 10}}>Labels only. Switch tours and log a date again to stack credit for that day.</p>
-            {tourList.length === 0 && <div className="notes-empty">No tours added yet.</div>}
-            {tourList.map(t => (
-              <div className={"manage-contract-row" + (t.archived ? " archived" : "")} key={t.id}>
-                <input type="text" value={t.name} onChange={e => renameTour(t.id, e.target.value)} />
-                <button onClick={() => toggleArchiveTour(t.id)}>{t.archived ? 'Unarchive' : 'Archive'}</button>
-                <button onClick={() => deleteTour(t.id)} style={{color: 'var(--danger)', borderColor: 'var(--danger)'}}>Delete</button>
-              </div>
-            ))}
-            <button className="btn btn-ghost" style={{width: '100%', marginTop: 4}} onClick={() => { setShowSettings(false); setShowAddTour(true); }}>+ Add a tour</button>
+            <div className="advanced-toggle" onClick={() => setShowToursSection(v => !v)}>
+              {showToursSection ? '– Hide tours' : '+ Tours (' + tourList.length + ')'}
+            </div>
+            {showToursSection && (
+              <React.Fragment>
+                <p className="desc" style={{marginBottom: 10}}>Labels only. Switch tours and log a date again to stack credit for that day.</p>
+                {tourList.length === 0 && <div className="notes-empty">No tours added yet.</div>}
+                {tourList.map(t => (
+                  <div className={"manage-contract-row" + (t.archived ? " archived" : "")} key={t.id}>
+                    <input type="text" value={t.name} onChange={e => renameTour(t.id, e.target.value)} />
+                    <button onClick={() => toggleArchiveTour(t.id)}>{t.archived ? 'Unarchive' : 'Archive'}</button>
+                    <button onClick={() => deleteTour(t.id)} style={{color: 'var(--danger)', borderColor: 'var(--danger)'}}>Delete</button>
+                  </div>
+                ))}
+                <button className="btn btn-ghost" style={{width: '100%', marginTop: 4}} onClick={() => { setShowSettings(false); setShowAddTour(true); }}>+ Add a tour</button>
+              </React.Fragment>
+            )}
 
             <hr className="divider" />
-            <h3>Backup</h3>
-            <p className="desc">Your data lives only on this device. Export it periodically so you don't lose it.</p>
-            <div className="data-actions">
-              <button className="btn btn-ghost" onClick={exportData}>Export data</button>
-              <button className="btn btn-ghost" onClick={() => fileInputRef.current.click()}>Import data</button>
-              <input ref={fileInputRef} type="file" accept=".json,application/json" style={{ display: 'none' }}
-                onChange={(e) => {
-                  if (e.target.files[0]) {
-                    const ok = window.confirm('This replaces all your current tours, entries, and settings with what\'s in this backup file. This can\'t be undone. Continue?');
-                    if (ok) importData(e.target.files[0]);
-                  }
-                  e.target.value = '';
-                }} />
+            <div className="advanced-toggle" onClick={() => setShowBackupSection(v => !v)}>
+              {showBackupSection ? '– Hide backup' : '+ Backup'}
             </div>
+            {showBackupSection && (
+              <React.Fragment>
+                <p className="desc">Your data lives only on this device. Export it periodically so you don't lose it.</p>
+                <div className="data-actions">
+                  <button className="btn btn-ghost" onClick={exportData}>Export data</button>
+                  <button className="btn btn-ghost" onClick={() => fileInputRef.current.click()}>Import data</button>
+                  <input ref={fileInputRef} type="file" accept=".json,application/json" style={{ display: 'none' }}
+                    onChange={(e) => {
+                      if (e.target.files[0]) {
+                        const ok = window.confirm('This replaces all your current tours, entries, and settings with what\'s in this backup file. This can\'t be undone. Continue?');
+                        if (ok) importData(e.target.files[0]);
+                      }
+                      e.target.value = '';
+                    }} />
+                </div>
+              </React.Fragment>
+            )}
           </div>
         </div>
       )}
