@@ -1,12 +1,14 @@
 # Days Worked — Setup & Usage Guide
 
+**App link:** https://audiorazor.github.io/days-worked/
+
 A simple tracker for logging days worked against your annual contract, with support for multiple tours and stacked days. Your data stays private on your own phone — nothing is shared with anyone else who uses this link.
 
 ---
 
 ## Installing on iPhone
 
-1. Open this link in **Safari** (it has to be Safari — Chrome or other browsers won't let you add it to your home screen the same way).
+1. Open the link above in **Safari** (it has to be Safari — Chrome or other browsers won't let you add it to your home screen the same way).
 2. Tap the **Share** icon at the bottom of the screen (a square with an arrow pointing up).
 3. Scroll down and tap **Add to Home Screen**.
 4. Tap **Add** in the top corner.
@@ -15,7 +17,7 @@ You'll now have an app icon on your home screen. Opening it launches full-screen
 
 ## Installing on Android
 
-1. Open this link in **Chrome**.
+1. Open the link above in **Chrome**.
 2. Tap the **⋮** (three dots) menu in the top-right corner.
 3. Tap **Add to Home Screen** (or **Install app**, depending on your Chrome version).
 4. Confirm by tapping **Add** or **Install**.
