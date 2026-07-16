@@ -324,6 +324,7 @@
     border: 1px solid var(--border);
     cursor: pointer;
     position: relative;
+    isolation: isolate;
     transition: transform .12s ease, background .15s ease;
     touch-action: manipulation;
   }
@@ -336,7 +337,7 @@
   .cell:active { transform: scale(0.9); }
 
   .cell.full { background: var(--full); color: #1a1408; border-color: var(--full); font-weight: 700; }
-  .cell.half { background: var(--half-dim); color: var(--half); border-color: var(--half); }
+  .cell.half { background: var(--half-dim); color: var(--half); border-color: var(--half); justify-content: flex-start; padding-left: 7px; }
   .cell.half::after {
     content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 50%;
     background: var(--half); border-radius: 0 7px 7px 0; z-index: -1;
