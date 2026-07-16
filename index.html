@@ -337,16 +337,8 @@
   .cell:active { transform: scale(0.9); }
 
   .cell.full { background: var(--full); color: #1a1408; border-color: var(--full); font-weight: 700; }
-  .cell.half { background: var(--half-dim); color: var(--half); border-color: var(--half); justify-content: flex-start; padding-left: 7px; }
-  .cell.half::after {
-    content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 50%;
-    background: var(--half); border-radius: 0 7px 7px 0; z-index: -1;
-  }
-  .cell.quarter { background: var(--quarter-dim); color: var(--quarter); border-color: var(--quarter); }
-  .cell.quarter::after {
-    content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 25%;
-    background: var(--quarter); border-radius: 0 7px 7px 0; z-index: -1;
-  }
+  .cell.half { background: var(--half); color: #0d1c28; border-color: var(--half); font-weight: 700; }
+  .cell.quarter { background: var(--quarter); color: #241408; border-color: var(--quarter); font-weight: 700; }
   .cell.future { opacity: 0.45; }
   .cell.locked {
     cursor: default;
@@ -359,12 +351,9 @@
     background: currentColor; opacity: 0.7;
   }
   .cell .stack-badge {
-    position: absolute; top: 2px; left: 2px;
-    font-size: 8px; font-weight: 800; line-height: 1;
+    position: absolute; top: 3px; left: 3px;
+    font-size: 10px; font-weight: 800; line-height: 1;
     color: currentColor;
-    background: rgba(0,0,0,0.22);
-    padding: 1px 3px;
-    border-radius: 4px;
   }
 
   .legend {
