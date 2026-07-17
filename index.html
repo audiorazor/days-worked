@@ -956,18 +956,20 @@ function App() {
 
   const [newAdjAmount, setNewAdjAmount] = useState('');
   const [newAdjNote, setNewAdjNote] = useState('');
+  const [newAdjTour, setNewAdjTour] = useState('');
   const yearAdjustments = adjustments[viewYear] || [];
 
   const addAdjustment = () => {
     const amt = parseFloat(newAdjAmount);
     if (!amt) return;
     const yearList = [...(adjustments[viewYear] || [])];
-    yearList.push({ id: makeId(), amount: amt, note: newAdjNote.trim() });
+    yearList.push({ id: makeId(), amount: amt, note: newAdjNote.trim(), tourKey: newAdjTour || null });
     const next = { ...adjustments, [viewYear]: yearList };
     setAdjustments(next);
     persist(tours, yearSettings, entries, next, activeTour);
     setNewAdjAmount('');
     setNewAdjNote('');
+    setNewAdjTour('');
   };
   const removeAdjustment = (id) => {
     const yearList = (adjustments[viewYear] || []).filter(a => a.id !== id);
@@ -1058,10 +1060,20 @@ function App() {
       const balKey = startingBalanceTour || '__balance__';
       totalsByTour[balKey] = (totalsByTour[balKey] || 0) + startingBalance;
     }
+    yearAdjustments.forEach(a => {
+      const adjKey = a.tourKey || '__adjustment__';
+      totalsByTour[adjKey] = (totalsByTour[adjKey] || 0) + a.amount;
+    });
     return Object.entries(totalsByTour)
-      .map(([tourKey, days]) => ({ tourKey, name: tourKey === '__balance__' ? 'Starting balance (unassigned)' : tourName(tourKey), days }))
+      .map(([tourKey, days]) => ({
+        tourKey,
+        name: tourKey === '__balance__' ? 'Starting balance (unassigned)'
+            : tourKey === '__adjustment__' ? 'Employer adjustment (unassigned)'
+            : tourName(tourKey),
+        days
+      }))
       .sort((a, b) => b.days - a.days);
-  }, [entries, viewYear, startingBalanceDate, startingBalance, startingBalanceTour, tours]);
+  }, [entries, viewYear, startingBalanceDate, startingBalance, startingBalanceTour, yearAdjustments, tours]);
 
   const yearSummaries = useMemo(() => {
     const years = new Set([new Date().getFullYear()]);
@@ -1495,7 +1507,7 @@ function App() {
             {yearAdjustments.length === 0 && <div className="notes-empty">No adjustments logged for {viewYear} yet.</div>}
             {yearAdjustments.map(a => (
               <div className="manage-contract-row" key={a.id}>
-                <input type="text" readOnly value={(a.amount > 0 ? '+' : '') + a.amount + ' days' + (a.note ? ' — ' + a.note : '')} />
+                <input type="text" readOnly value={(a.amount > 0 ? '+' : '') + a.amount + ' days' + (a.tourKey ? ' · ' + tourName(a.tourKey) : '') + (a.note ? ' — ' + a.note : '')} />
                 <button onClick={() => removeAdjustment(a.id)}>Remove</button>
               </div>
             ))}
@@ -1506,6 +1518,20 @@ function App() {
               <input type="number" inputMode="decimal" step="0.5" placeholder="e.g. 1.5 or -0.5" value={newAdjAmount}
                 onChange={e => setNewAdjAmount(e.target.value)} />
             </div>
+            {visibleTours.length > 0 && (
+              <div className="field">
+                <label>Attribute to a tour (optional)</label>
+                <div className="tour-chip-row">
+                  {visibleTours.map(t => (
+                    <div key={t.id} className={"tour-chip" + (newAdjTour === t.id ? " active" : "")}
+                      onClick={() => setNewAdjTour(v => v === t.id ? '' : t.id)}>
+                      {t.name}
+                    </div>
+                  ))}
+                </div>
+                <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>Shows up in that tour's total on the "By tour" breakdown. Leave unselected to keep it unassigned.</div>
+              </div>
+            )}
             <div className="field">
               <label>Note (optional)</label>
               <input type="text" placeholder="e.g. Boss counted 6/12 travel as full" value={newAdjNote}
