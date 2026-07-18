@@ -1133,6 +1133,34 @@ function App() {
   };
   const changeYear = (delta) => setViewYear(y => y + delta);
 
+  const monthPrefix = viewYear + '-' + String(viewMonth + 1).padStart(2, '0') + '-';
+  const clearableDatesThisMonth = Object.keys(entries).filter(iso =>
+    iso.startsWith(monthPrefix) &&
+    entries[iso][activeKey] &&
+    !(startingBalanceDate && iso <= startingBalanceDate)
+  );
+
+  const clearMonthForActiveTour = () => {
+    if (!canLog || clearableDatesThisMonth.length === 0) return;
+    const count = clearableDatesThisMonth.length;
+    const ok = window.confirm(
+      `Clear all ${tourName(activeKey)} entries for ${MONTH_NAMES[viewMonth]} ${viewYear}? ` +
+      `This removes ${count} logged day${count === 1 ? '' : 's'} for this tour only — ` +
+      `any other tour's entries on the same dates won't be touched. This can't be undone.`
+    );
+    if (!ok) return;
+    setEntries(prev => {
+      const updated = { ...prev };
+      clearableDatesThisMonth.forEach(iso => {
+        const day = { ...updated[iso] };
+        delete day[activeKey];
+        if (Object.keys(day).length === 0) delete updated[iso]; else updated[iso] = day;
+      });
+      persist(tours, yearSettings, updated, adjustments, activeTour);
+      return updated;
+    });
+  };
+
   const handleSwipeStart = (e) => {
     const t = e.touches ? e.touches[0] : e;
     swipeRef.current = { x: t.clientX, y: t.clientY, active: true };
@@ -1168,6 +1196,7 @@ function App() {
   };
 
   const needsSetup = Object.keys(yearSettings).length === 0;
+  const hasEntriesForEditingYear = Object.keys(entries).some(iso => iso.startsWith(editingSettingsYear + '-'));
   const todayDayObj = entries[todayIso] || {};
   const todayActiveEntry = todayDayObj[activeKey] || {};
   const otherTodayEntries = Object.entries(todayDayObj).filter(([k]) => k !== activeKey);
@@ -1478,6 +1507,13 @@ function App() {
           ? 'Tap to cycle Full → Half → Quarter → clear. Hold for details. A "×2" badge means another tour is also logged that day.'
           : 'Hold any date to view or edit what\'s already logged.'}
       </div>
+      {canLog && clearableDatesThisMonth.length > 0 && (
+        <div style={{textAlign: 'center', marginTop: 10}}>
+          <span style={{fontSize: 12, color: 'var(--danger)', cursor: 'pointer'}} onClick={clearMonthForActiveTour}>
+            Clear {tourName(activeKey)} entries for {MONTH_NAMES[viewMonth]}
+          </span>
+        </div>
+      )}
       </React.Fragment>
       )}
 
@@ -1576,26 +1612,38 @@ function App() {
                 <div className="field">
                   <label>Starting balance for {editingSettingsYear} (optional)</label>
                   <input type="number" inputMode="decimal" step="0.5" placeholder="Days already worked before tracking" value={settingsDraft.startingBalance}
-                    onChange={e => setSettingsDraft(s => ({ ...s, startingBalance: e.target.value }))} />
+                    disabled={hasEntriesForEditingYear}
+                    onChange={e => setSettingsDraft(s => ({ ...s, startingBalance: e.target.value }))}
+                    style={hasEntriesForEditingYear ? { opacity: 0.5, cursor: 'not-allowed' } : undefined} />
+                  {hasEntriesForEditingYear && (
+                    <div style={{fontSize: 11, color: 'var(--half)', marginTop: 6}}>Locked because you've already logged real days for {editingSettingsYear}. This is only for days before you started tracking, so it can't be edited once real entries exist.</div>
+                  )}
                 </div>
                 <div className="field">
                   <label>As of date (optional)</label>
                   <input type="date" value={settingsDraft.startingBalanceDate}
-                    onChange={e => setSettingsDraft(s => ({ ...s, startingBalanceDate: e.target.value }))} />
-                  <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>Dates on or before this are locked on the calendar so they can't get double-counted.</div>
+                    disabled={hasEntriesForEditingYear}
+                    onChange={e => setSettingsDraft(s => ({ ...s, startingBalanceDate: e.target.value }))}
+                    style={hasEntriesForEditingYear ? { opacity: 0.5, cursor: 'not-allowed' } : undefined} />
+                  {!hasEntriesForEditingYear && (
+                    <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>Dates on or before this are locked on the calendar so they can't get double-counted.</div>
+                  )}
                 </div>
                 {visibleTours.length > 0 && (
                   <div className="field">
                     <label>Attribute starting balance to a tour (optional)</label>
                     <div className="tour-chip-row">
                       {visibleTours.map(t => (
-                        <div key={t.id} className={"tour-chip" + (settingsDraft.startingBalanceTour === t.id ? " active" : "")}
-                          onClick={() => setSettingsDraft(s => ({ ...s, startingBalanceTour: s.startingBalanceTour === t.id ? '' : t.id }))}>
+                        <div key={t.id} className={"tour-chip" + (settingsDraft.startingBalanceTour === t.id ? " active" : "") + (hasEntriesForEditingYear ? "" : "")}
+                          onClick={() => { if (!hasEntriesForEditingYear) setSettingsDraft(s => ({ ...s, startingBalanceTour: s.startingBalanceTour === t.id ? '' : t.id })); }}
+                          style={hasEntriesForEditingYear ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}>
                           {t.name}
                         </div>
                       ))}
                     </div>
-                    <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>Shows up in that tour's total on the Year Summary "By tour" breakdown. Leave unselected to keep it unassigned.</div>
+                    {!hasEntriesForEditingYear && (
+                      <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>Shows up in that tour's total on the Year Summary "By tour" breakdown. Leave unselected to keep it unassigned.</div>
+                    )}
                   </div>
                 )}
               </React.Fragment>
