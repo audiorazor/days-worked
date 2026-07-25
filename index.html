@@ -1042,6 +1042,22 @@ function App() {
   const extraDays = Math.max(0, totals.total - contractDays);
   const extraPay = dayRate ? extraDays * dayRate : null;
 
+  const overageInfo = useMemo(() => {
+    if (!isOver || contractDays <= 0) return null;
+    let running = startingBalance + adjustmentTotal;
+    if (running >= contractDays) return { date: null, crossedBeforeTracking: true };
+    const viewedYearPrefix = viewYear + '-';
+    const datesSorted = Object.keys(entries)
+      .filter(iso => iso.startsWith(viewedYearPrefix))
+      .filter(iso => !(startingBalanceDate && iso <= startingBalanceDate))
+      .sort();
+    for (const iso of datesSorted) {
+      running += dayTotal(entries[iso]);
+      if (running >= contractDays) return { date: iso, crossedBeforeTracking: false };
+    }
+    return null;
+  }, [isOver, contractDays, entries, viewYear, startingBalance, startingBalanceDate, adjustmentTotal]);
+
   const tourList = Object.entries(tours).map(([id, t]) => ({ id, ...t }));
   const visibleTours = tourList.filter(t => !t.archived);
   const tourName = (key) => key === NONE_KEY ? 'No tag' : (tours[key]?.name || 'Deleted tour');
@@ -1391,6 +1407,11 @@ function App() {
               {isOver
                 ? <div>Over by <b>{(totals.total - contractDays).toFixed(1)}</b></div>
                 : <div><b>{remaining.toFixed(1)}</b> to go</div>}
+              {isOver && overageInfo && (
+                overageInfo.crossedBeforeTracking
+                  ? <div style={{marginTop: 2}}>Already over before tracked days</div>
+                  : <div style={{marginTop: 2}}>Crossed {contractDays} on <b>{friendlyDate(overageInfo.date)}</b></div>
+              )}
             </div>
           </div>
           <div className="progress-track">
