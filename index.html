@@ -1062,6 +1062,21 @@ function App() {
   const [showByTourSection, setShowByTourSection] = useState(false);
   const [showNotesSection, setShowNotesSection] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [updateCheckStatus, setUpdateCheckStatus] = useState('');
+
+  const checkForUpdates = async () => {
+    setUpdateCheckStatus('Checking…');
+    try {
+      const reg = window.__swRegistration || (await navigator.serviceWorker?.getRegistration());
+      if (reg) await reg.update();
+      setUpdateCheckStatus('Reloading…');
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (e) {
+      setUpdateCheckStatus('Reloading…');
+      setTimeout(() => window.location.reload(), 600);
+    }
+  };
+
   const checkDateResult = useMemo(() => {
     if (!checkDate) return null;
     const year = parseInt(checkDate.slice(0, 4), 10);
@@ -1780,6 +1795,11 @@ function App() {
                       e.target.value = '';
                     }} />
                 </div>
+                <hr className="divider" />
+                <p className="desc" style={{marginBottom: 10}}>If a recent update isn't showing up, force a check instead of guessing.</p>
+                <button className="btn btn-ghost" style={{width: '100%'}} onClick={checkForUpdates}>
+                  {updateCheckStatus || 'Check for updates'}
+                </button>
               </React.Fragment>
             )}
           </div>
@@ -1922,10 +1942,18 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 
 <script>
-  // Register service worker so the app keeps working without a connection after the first load
+  // Register service worker so the app keeps working without a connection after the first load.
+  // iOS Safari doesn't reliably check for a newer service worker on its own, so we force a check
+  // every time the app loads or comes back into focus.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+      navigator.serviceWorker.register('./service-worker.js').then((reg) => {
+        reg.update().catch(() => {});
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
+        window.__swRegistration = reg;
+      }).catch(() => {});
     });
   }
 </script>
