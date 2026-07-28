@@ -84,8 +84,11 @@ Once you're over your contract days, the stat panel shows not just how far over,
 
 - **Check total as of a date** — pick any date and see your cumulative total up through that day, for any year.
 - Your total per year against contract terms.
-- A breakdown by tour.
-- Every note you've logged that year.
+- **By tour** and **Notes** are tucked behind their own "+" toggles to keep the screen short — tap either to expand it.
+
+### Help (? icon)
+
+The **?** icon at the far right of the header opens a quick reference covering logging, tour stacking, getting around the calendar, and the difference between starting balance and employer adjustments — worth a look if something's unclear.
 
 ### Hiding pay figures
 
@@ -107,6 +110,18 @@ Since everything is stored only on your device, back up periodically:
 2. When saving it, choose **Save to Files → iCloud Drive** (or Google Drive on Android) so you have a copy off the phone.
 
 The app will remind you if it's been more than two weeks since your last export.
+
+---
+
+## If a recent update isn't showing up
+
+This app is a web app added to your home screen, not an App Store app — so updates don't always show up the instant they're pushed, especially on iPhone. If something I've described here doesn't match what you're seeing:
+
+1. **Fully close the app** (swipe it away, don't just leave it in the background) and **reopen it twice**. The first reopen after an update often still shows the old version while the new one loads in quietly; the second is usually when it switches over.
+2. Still stuck? Open **Settings → Backup → Check for updates** inside the app — this forces it to check right away instead of waiting.
+3. Still nothing after that? Export a backup first, then delete the app icon from your home screen and add it fresh from the link at the top of this guide — this guarantees a completely clean copy. Re-import your backup afterward (Settings → Backup → Import data).
+
+This is a known iOS limitation with home-screen web apps generally, not something specific to this app — Apple's own update-checking for these is just inconsistent.
 
 ---
 
