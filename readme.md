@@ -39,6 +39,10 @@ Same result — a home screen icon that opens full-screen.
 - Or tap any date directly on the calendar — tapping cycles through Full → Half → Quarter → clear.
 - **Hold a date** (about half a second) to open its full detail — add a note, or manage everything logged for that date.
 
+### Jumping back to today
+
+A **Today** button sits between the year arrows below the calendar header — one tap returns you to the current month no matter how far you've navigated away. It dims slightly when you're already there. Today's date is also always marked with a bright ring around it on the calendar, regardless of what color that day is otherwise showing.
+
 ### Stacking days across tours
 
 If you were credited for more than one tour on the same date (for example, on retainer for one tour while actively working another), you can log that date under each tour separately:
@@ -46,7 +50,11 @@ If you were credited for more than one tour on the same date (for example, on re
 1. Select the first tour from the pills, tap the date.
 2. Switch to the second tour, tap the same date again.
 
-Both entries stack — your total day count adds up all of them. A small **"×2"** badge appears on any date with more than one tour logged, and holding that date shows the full breakdown.
+Both entries stack — your total day count adds up all of them. A small **"×2"** badge appears on any date with more than one tour logged, and holding that date shows the full breakdown, with the option to add still more tours to the same day.
+
+### Clearing a whole month
+
+If a month needs redoing (wrong backup imported, batch of mistakes, etc.), a small **"Clear [tour] entries for [Month]"** link appears below the calendar whenever there's something to clear for your currently selected tour. It only touches that tour's entries for the month you're viewing — any other tour's stacked entries on those same dates are left alone. You'll get a confirmation showing exactly how many days it's about to remove before anything happens.
 
 ### Notes
 
@@ -58,18 +66,26 @@ Both entries stack — your total day count adds up all of them. A small **"×2"
 - **Contract days per year** — your annual threshold.
 - **Annual salary** (optional) — enables day rate and extra-pay calculations.
 - **Advanced** section (tap to expand):
-  - **Standard days for pay rate** — only needed if your contract days are prorated (e.g. a partial first year). Leave blank otherwise.
-  - **Starting balance** — enter a lump number of days already worked before you started using the app, with an optional date. You can attribute it to a specific tour so it shows correctly in the "By tour" breakdown.
-- **Tours** — rename, archive, or delete tours here. Archiving hides a tour from the picker without losing its data; deleting removes its logged days entirely (you'll see a warning first).
-- **Backup** — export your data as a file, or import a previous backup.
+  - **Standard days for pay rate** — only needed if your contract days are prorated (e.g. a partial first year — a new hire starting mid-year, for instance). Leave blank otherwise; this keeps day rate calculating off the normal full-year figure even when the year itself is prorated.
+  - **Starting balance** — enter a lump number of days already worked before you started using the app, with an optional date and an optional tour to attribute it to (shows up correctly in the "By tour" breakdown). **Once you've logged any real days for that year, these fields lock automatically** and gray out — this is a safety guard so a later edit can't accidentally bury data you've already entered. It's meant for the one-time catch-up before you started tracking, not ongoing corrections.
+- **Tours** — rename, archive, or delete tours here.
+  - **Archive** hides a tour from the picker without touching its data — fully reversible.
+  - **Delete** actually removes every day logged under that tour, and tells you exactly how many days and how much that'll subtract from your total before you confirm. This can't be undone.
 
 ### Employer adjustments
 
-If your employer counts your days differently than you do, use **+ Add employer adjustment** in the stat panel to add or subtract days directly — no need to tap a specific date for it.
+If your employer counts your days differently than you do, use **+ Add employer adjustment** in the stat panel to add or subtract days directly — no need to tap a specific date for it. You can optionally attribute an adjustment to a specific tour so it folds into that tour's number in the "By tour" breakdown too.
+
+### Seeing exactly when you went over
+
+Once you're over your contract days, the stat panel shows not just how far over, but the **exact date** the running total crossed the line — for example "Crossed 245 on Oct 5." It works out the real date based on your actual logged days in order, accounting for any stacking.
 
 ### Year Summary (bar chart icon)
 
-Shows your total per year, a breakdown by tour, and every note you've logged that year.
+- **Check total as of a date** — pick any date and see your cumulative total up through that day, for any year.
+- Your total per year against contract terms.
+- A breakdown by tour.
+- Every note you've logged that year.
 
 ### Hiding pay figures
 
@@ -78,6 +94,10 @@ If a salary is set, an eye icon appears in the header. Tap it to blur your day r
 ### Light / dark mode
 
 Tap the sun/moon icon in the header to switch. It follows your phone's own light/dark setting by default, and remembers your choice after that.
+
+### Colorblind-friendly by design
+
+The three status colors (Full, Half, Quarter) are chosen to stay distinguishable under the most common forms of colorblindness — amber, blue, and purple are each far enough apart in hue that none of them should be confused for another.
 
 ### Backing up your data
 
