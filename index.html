@@ -1746,7 +1746,12 @@ function App() {
 
             <div className="field">
               <label>Check total as of a date</label>
-              <input type="date" value={checkDate} onChange={e => setCheckDate(e.target.value)} />
+              <div style={{display: 'flex', gap: 8}}>
+                <input type="date" value={checkDate} onChange={e => setCheckDate(e.target.value)} style={{flex: 1}} />
+                {checkDate && (
+                  <button className="btn btn-ghost" style={{flex: '0 0 auto', padding: '0 16px'}} onClick={() => setCheckDate('')}>Clear</button>
+                )}
+              </div>
             </div>
             {checkDateResult && (
               <div className="stat-panel" style={{marginBottom: 18, padding: '14px 16px'}}>
