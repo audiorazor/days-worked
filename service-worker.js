@@ -1,4 +1,4 @@
-const CACHE_NAME = 'days-worked-cache-v27';
+const CACHE_NAME = 'days-worked-cache-v28';
 const PRECACHE_URLS = [
   './',
   './index.html',

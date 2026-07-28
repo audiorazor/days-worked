@@ -1058,6 +1058,26 @@ function App() {
     return null;
   }, [isOver, contractDays, entries, viewYear, startingBalance, startingBalanceDate, adjustmentTotal]);
 
+  const [checkDate, setCheckDate] = useState('');
+  const checkDateResult = useMemo(() => {
+    if (!checkDate) return null;
+    const year = parseInt(checkDate.slice(0, 4), 10);
+    const sb = yearSettings[year]?.startingBalance || 0;
+    const sbDate = yearSettings[year]?.startingBalanceDate || null;
+    const adj = (adjustments[year] || []).reduce((s, a) => s + a.amount, 0);
+    let total = sb + adj;
+    const yearPrefix = year + '-';
+    Object.entries(entries).forEach(([iso, dayObj]) => {
+      if (!iso.startsWith(yearPrefix)) return;
+      if (iso > checkDate) return;
+      if (sbDate && iso <= sbDate) return;
+      total += dayTotal(dayObj);
+    });
+    const eff = effectiveSettingsFor(yearSettings, year);
+    const cd = eff ? eff.data.contractDays : 245;
+    return { total, contractDays: cd, year };
+  }, [checkDate, entries, yearSettings, adjustments]);
+
   const tourList = Object.entries(tours).map(([id, t]) => ({ id, ...t }));
   const visibleTours = tourList.filter(t => !t.archived);
   const tourName = (key) => key === NONE_KEY ? 'No tag' : (tours[key]?.name || 'Deleted tour');
@@ -1723,6 +1743,23 @@ function App() {
         <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowSummary(false); }}>
           <div className="modal">
             <h2>Year summary</h2>
+
+            <div className="field">
+              <label>Check total as of a date</label>
+              <input type="date" value={checkDate} onChange={e => setCheckDate(e.target.value)} />
+            </div>
+            {checkDateResult && (
+              <div className="stat-panel" style={{marginBottom: 18, padding: '14px 16px'}}>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'baseline'}}>
+                  <span style={{fontSize: 12, color: 'var(--text-muted)'}}>As of {friendlyDate(checkDate)}, {checkDateResult.year}</span>
+                  <span style={{fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 18}}>
+                    {checkDateResult.total.toFixed(1)} <span style={{color: 'var(--text-muted)', fontSize: 13, fontWeight: 500}}>/ {checkDateResult.contractDays}</span>
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <hr className="divider" />
             <p className="desc">One total per year, against your contract terms — includes stacked days from every tour.</p>
             {yearSummaries.map(y => (
               <div className="summary-row" key={y.year}>
