@@ -957,19 +957,21 @@ function App() {
   const [newAdjAmount, setNewAdjAmount] = useState('');
   const [newAdjNote, setNewAdjNote] = useState('');
   const [newAdjTour, setNewAdjTour] = useState('');
+  const [newAdjDate, setNewAdjDate] = useState('');
   const yearAdjustments = adjustments[viewYear] || [];
 
   const addAdjustment = () => {
     const amt = parseFloat(newAdjAmount);
     if (!amt) return;
     const yearList = [...(adjustments[viewYear] || [])];
-    yearList.push({ id: makeId(), amount: amt, note: newAdjNote.trim(), tourKey: newAdjTour || null });
+    yearList.push({ id: makeId(), amount: amt, note: newAdjNote.trim(), tourKey: newAdjTour || null, date: newAdjDate || null });
     const next = { ...adjustments, [viewYear]: yearList };
     setAdjustments(next);
     persist(tours, yearSettings, entries, next, activeTour);
     setNewAdjAmount('');
     setNewAdjNote('');
     setNewAdjTour('');
+    setNewAdjDate('');
   };
   const removeAdjustment = (id) => {
     const yearList = (adjustments[viewYear] || []).filter(a => a.id !== id);
@@ -1044,19 +1046,22 @@ function App() {
 
   const overageInfo = useMemo(() => {
     if (!isOver || contractDays <= 0) return null;
-    let running = startingBalance + adjustmentTotal;
+    const undatedAdjTotal = yearAdjustments.filter(a => !a.date).reduce((s, a) => s + a.amount, 0);
+    let running = startingBalance + undatedAdjTotal;
     if (running >= contractDays) return { date: null, crossedBeforeTracking: true };
     const viewedYearPrefix = viewYear + '-';
-    const datesSorted = Object.keys(entries)
+    const dayEvents = Object.keys(entries)
       .filter(iso => iso.startsWith(viewedYearPrefix))
       .filter(iso => !(startingBalanceDate && iso <= startingBalanceDate))
-      .sort();
-    for (const iso of datesSorted) {
-      running += dayTotal(entries[iso]);
-      if (running >= contractDays) return { date: iso, crossedBeforeTracking: false };
+      .map(iso => ({ date: iso, amount: dayTotal(entries[iso]) }));
+    const adjEvents = yearAdjustments.filter(a => a.date).map(a => ({ date: a.date, amount: a.amount }));
+    const allEvents = [...dayEvents, ...adjEvents].sort((a, b) => a.date.localeCompare(b.date));
+    for (const ev of allEvents) {
+      running += ev.amount;
+      if (running >= contractDays) return { date: ev.date, crossedBeforeTracking: false };
     }
     return null;
-  }, [isOver, contractDays, entries, viewYear, startingBalance, startingBalanceDate, adjustmentTotal]);
+  }, [isOver, contractDays, entries, viewYear, startingBalance, startingBalanceDate, yearAdjustments]);
 
   const [checkDate, setCheckDate] = useState('');
   const [showByTourSection, setShowByTourSection] = useState(false);
@@ -1082,8 +1087,10 @@ function App() {
     const year = parseInt(checkDate.slice(0, 4), 10);
     const sb = yearSettings[year]?.startingBalance || 0;
     const sbDate = yearSettings[year]?.startingBalanceDate || null;
-    const adj = (adjustments[year] || []).reduce((s, a) => s + a.amount, 0);
-    let total = sb + adj;
+    const yearAdjList = adjustments[year] || [];
+    const undatedAdj = yearAdjList.filter(a => !a.date).reduce((s, a) => s + a.amount, 0);
+    const datedAdjSoFar = yearAdjList.filter(a => a.date && a.date <= checkDate).reduce((s, a) => s + a.amount, 0);
+    let total = sb + undatedAdj + datedAdjSoFar;
     const yearPrefix = year + '-';
     Object.entries(entries).forEach(([iso, dayObj]) => {
       if (!iso.startsWith(yearPrefix)) return;
@@ -1605,7 +1612,7 @@ function App() {
 
             <h3>Starting balance vs. employer adjustments</h3>
             <p className="desc" style={{marginBottom: 14}}>
-              Starting balance (in Settings → Advanced) is a one-time catch-up number for days worked before you started using the app — it locks once you've logged real days for that year. Employer adjustments (the "+ Add employer adjustment" row) are for an ongoing gap between your count and your employer's, not tied to a specific date.
+              Starting balance (in Settings → Advanced) is a one-time catch-up number for days worked before you started using the app — it locks once you've logged real days for that year. Employer adjustments (the "+ Add employer adjustment" row) are for an ongoing gap between your count and your employer's, and can optionally have a date attached so "Check total as of a date" and the crossing-date display reflect exactly when it applied — leave the date blank and it counts from the start of the year instead.
             </p>
 
             <h3>Backups</h3>
@@ -1646,7 +1653,7 @@ function App() {
             {yearAdjustments.length === 0 && <div className="notes-empty">No adjustments logged for {viewYear} yet.</div>}
             {yearAdjustments.map(a => (
               <div className="manage-contract-row" key={a.id}>
-                <input type="text" readOnly value={(a.amount > 0 ? '+' : '') + a.amount + ' days' + (a.tourKey ? ' · ' + tourName(a.tourKey) : '') + (a.note ? ' — ' + a.note : '')} />
+                <input type="text" readOnly value={(a.amount > 0 ? '+' : '') + a.amount + ' days' + (a.date ? ' · ' + friendlyDate(a.date) : '') + (a.tourKey ? ' · ' + tourName(a.tourKey) : '') + (a.note ? ' — ' + a.note : '')} />
                 <button onClick={() => removeAdjustment(a.id)}>Remove</button>
               </div>
             ))}
@@ -1656,6 +1663,11 @@ function App() {
               <label>Amount (days)</label>
               <input type="number" inputMode="decimal" step="0.5" placeholder="e.g. 1.5 or -0.5" value={newAdjAmount}
                 onChange={e => setNewAdjAmount(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Date it applied (optional)</label>
+              <input type="date" value={newAdjDate} onChange={e => setNewAdjDate(e.target.value)} />
+              <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>Used for "Check total as of a date" and the over-threshold crossing date, so they reflect when this actually applied instead of counting it from day one. Leave blank if you're not sure — it'll still count toward the year total either way.</div>
             </div>
             {visibleTours.length > 0 && (
               <div className="field">

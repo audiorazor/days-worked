@@ -74,7 +74,7 @@ If a month needs redoing (wrong backup imported, batch of mistakes, etc.), a sma
 
 ### Employer adjustments
 
-If your employer counts your days differently than you do, use **+ Add employer adjustment** in the stat panel to add or subtract days directly — no need to tap a specific date for it. You can optionally attribute an adjustment to a specific tour so it folds into that tour's number in the "By tour" breakdown too.
+If your employer counts your days differently than you do, use **+ Add employer adjustment** in the stat panel to add or subtract days directly. You can optionally attribute an adjustment to a specific tour so it folds into that tour's number in the "By tour" breakdown, and optionally give it a **date it applied** — this makes "Check total as of a date" and the crossing-date display accurate to when the adjustment actually happened, instead of assuming it existed since day one of the year. Leave the date blank and it behaves the old way, counted from the start of the year; either way it always counts toward your overall year total.
 
 ### Seeing exactly when you went over
 
