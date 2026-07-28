@@ -556,6 +556,7 @@ const MONTH_NAMES = ['January','February','March','April','May','June','July','A
 const WEEKDAYS = ['S','M','T','W','T','F','S'];
 const STATUS_CYCLE = [null, 'full', 'half', 'quarter'];
 const STATUS_VALUE = { full: 1, half: 0.5, quarter: 0.25 };
+const APP_VERSION = 'v37';
 const STORAGE_KEY = 'daysWorkedTrackerData';
 const META_KEY = 'daysWorkedTrackerMeta';
 const THEME_KEY = 'daysWorkedTrackerTheme';
@@ -1833,6 +1834,7 @@ function App() {
                 </button>
               </React.Fragment>
             )}
+            <div style={{textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', marginTop: 18}}>Days Worked · {APP_VERSION}</div>
           </div>
         </div>
       )}
