@@ -371,6 +371,7 @@
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     display: flex; align-items: flex-end; justify-content: center;
     z-index: 50;
+    overscroll-behavior: contain;
   }
   .modal {
     background: var(--panel);
@@ -382,6 +383,8 @@
     animation: slideup .28s cubic-bezier(.16,1,.3,1);
     max-height: 85vh;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
   @keyframes slideup { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
   .modal h2 {
@@ -556,7 +559,7 @@ const MONTH_NAMES = ['January','February','March','April','May','June','July','A
 const WEEKDAYS = ['S','M','T','W','T','F','S'];
 const STATUS_CYCLE = [null, 'full', 'half', 'quarter'];
 const STATUS_VALUE = { full: 1, half: 0.5, quarter: 0.25 };
-const APP_VERSION = 'v37';
+const APP_VERSION = 'v38';
 const STORAGE_KEY = 'daysWorkedTrackerData';
 const META_KEY = 'daysWorkedTrackerMeta';
 const THEME_KEY = 'daysWorkedTrackerTheme';
@@ -1068,21 +1071,27 @@ function App() {
   const [showByTourSection, setShowByTourSection] = useState(false);
   const [showNotesSection, setShowNotesSection] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [helpOpen, setHelpOpen] = useState({});
+  const toggleHelp = (key) => setHelpOpen(h => ({ ...h, [key]: !h[key] }));
 
   const anyModalOpen = showSettings || showSummary || showAddTour || showAdjustments || showHelp || !!dayDetailIso;
   useEffect(() => {
     if (anyModalOpen) {
       const scrollY = window.scrollY;
+      document.documentElement.style.overflow = 'hidden';
       document.body.style.position = 'fixed';
       document.body.style.top = `-${scrollY}px`;
       document.body.style.left = '0';
       document.body.style.right = '0';
+      document.body.style.overflow = 'hidden';
     } else {
       const scrollY = document.body.style.top;
+      document.documentElement.style.overflow = '';
       document.body.style.position = '';
       document.body.style.top = '';
       document.body.style.left = '';
       document.body.style.right = '';
+      document.body.style.overflow = '';
       if (scrollY) window.scrollTo(0, parseInt(scrollY, 10) * -1);
     }
   }, [anyModalOpen]);
@@ -1617,7 +1626,7 @@ function App() {
 
             <h3>Logging days</h3>
             <p className="desc" style={{marginBottom: 14}}>
-              Tap a date to cycle Full → Half → Quarter → clear. Hold a date for about half a second to open its full detail — add a note, change status, or remove it. You need a tour selected up top before you can log anything.
+              Tap a date to cycle Full → Half → Quarter → clear. Hold a date for about half a second to open its full detail — add a note, change status, or remove it. You need a tour selected up top before you can log anything — that's what makes stacking possible.
             </p>
 
             <h3>Stacking tours</h3>
@@ -1625,20 +1634,84 @@ function App() {
               If you were credited for more than one tour on the same day, select the first tour and tap the date, then switch to the second tour and tap that same date again. Both stack into your total. A small "×2" badge marks any date with more than one tour logged.
             </p>
 
-            <h3>Getting around</h3>
-            <p className="desc" style={{marginBottom: 14}}>
-              Swipe left or right on the calendar to change months, or use the arrows. Tap "Today" to jump straight back to the current month. Tap the year numbers to jump a full year at a time.
-            </p>
+            <hr className="divider" />
+            <div className="advanced-toggle" onClick={() => toggleHelp('nav')}>
+              {helpOpen.nav ? '– Hide' : '+ Getting around & clearing a month'}
+            </div>
+            {helpOpen.nav && (
+              <p className="desc" style={{marginBottom: 0}}>
+                Swipe left or right on the calendar to change months, or use the arrows. Tap "Today" to jump straight back to the current month. Tap the year numbers to jump a full year at a time.<br/><br/>
+                If a whole month needs redoing, a small "Clear [tour] entries for [Month]" link appears below the calendar whenever there's something to clear for your currently selected tour. It only removes that tour's entries for the month you're viewing — other tours' stacked entries on the same dates are untouched. You'll always see a confirmation showing exactly how many days it's about to remove first.
+              </p>
+            )}
 
-            <h3>Starting balance vs. employer adjustments</h3>
-            <p className="desc" style={{marginBottom: 14}}>
-              Starting balance (in Settings → Advanced) is a one-time catch-up number for days worked before you started using the app — it locks once you've logged real days for that year. Employer adjustments (the "+ Add employer adjustment" row) are for an ongoing gap between your count and your employer's, and can optionally have a date attached so "Check total as of a date" and the crossing-date display reflect exactly when it applied — leave the date blank and it counts from the start of the year instead.
-            </p>
+            <hr className="divider" />
+            <div className="advanced-toggle" onClick={() => toggleHelp('settings')}>
+              {helpOpen.settings ? '– Hide' : '+ What the Settings fields do'}
+            </div>
+            {helpOpen.settings && (
+              <p className="desc" style={{marginBottom: 0}}>
+                <b>Contract days per year</b> is your actual annual threshold — what your progress bar tracks against.<br/><br/>
+                <b>Annual salary</b> (optional) enables the day rate and extra-pay figures.<br/><br/>
+                <b>Standard days for pay rate</b>, under Advanced, is only for a prorated year (like a new hire starting mid-year) — it keeps day rate calculating off the normal full-year number even when contract days itself is a shorter prorated figure. Leave it blank otherwise.<br/><br/>
+                <b>Starting balance</b>, also under Advanced, is a one-time catch-up number for days worked before you started using the app, with an optional date and tour to attribute it to. It automatically locks once you've logged any real days for that year — that's a safety guard so a later edit can't bury data you've already entered.<br/><br/>
+                <b>Tours</b> — <b>Archive</b> hides a tour from the picker without touching its data, fully reversible. <b>Delete</b> actually removes every day logged under that tour, and warns you exactly how many days and how much that'll subtract before you confirm.
+              </p>
+            )}
 
-            <h3>Backups</h3>
-            <p className="desc" style={{marginBottom: 0}}>
-              Your data lives only on this device. Export a backup from Settings periodically — the app will remind you if it's been a while.
-            </p>
+            <hr className="divider" />
+            <div className="advanced-toggle" onClick={() => toggleHelp('adjustments')}>
+              {helpOpen.adjustments ? '– Hide' : '+ Starting balance vs. employer adjustments'}
+            </div>
+            {helpOpen.adjustments && (
+              <p className="desc" style={{marginBottom: 0}}>
+                Starting balance is a one-time catch-up for days before you started tracking. Employer adjustments (the "+ Add employer adjustment" row in the stat panel) are for an ongoing gap between your count and your employer's — you can add or subtract days directly, optionally attribute the adjustment to a tour so it folds into that tour's "By tour" number, and optionally give it a date it applied. With a date set, "Check total as of a date" and the crossing-date display only count it from that point forward; left blank, it counts from the start of the year like before. Either way, it always counts toward your overall year total.
+              </p>
+            )}
+
+            <hr className="divider" />
+            <div className="advanced-toggle" onClick={() => toggleHelp('summary')}>
+              {helpOpen.summary ? '– Hide' : '+ Year Summary & the crossing date'}
+            </div>
+            {helpOpen.summary && (
+              <p className="desc" style={{marginBottom: 0}}>
+                Once you're over your contract days, the stat panel shows the exact date the running total crossed the line — worked out from your real logged days in order, accounting for stacking and any dated adjustments.<br/><br/>
+                Year Summary (bar chart icon) has a <b>"Check total as of a date"</b> tool — pick any date and see your cumulative total up through that day, for any year. "By tour" and "Notes" are tucked behind their own "+" toggles to keep the screen short.
+              </p>
+            )}
+
+            <hr className="divider" />
+            <div className="advanced-toggle" onClick={() => toggleHelp('display')}>
+              {helpOpen.display ? '– Hide' : '+ Privacy, themes & colors'}
+            </div>
+            {helpOpen.display && (
+              <p className="desc" style={{marginBottom: 0}}>
+                If a salary is set, an eye icon in the header blurs your day rate and extra pay before you hand your phone to someone else — it resets to visible each time you reopen the app.<br/><br/>
+                The sun/moon icon switches light and dark mode, following your phone's own setting by default and remembering your choice after that.<br/><br/>
+                The three status colors (Full, Half, Quarter) are chosen to stay distinguishable under the most common forms of colorblindness.
+              </p>
+            )}
+
+            <hr className="divider" />
+            <div className="advanced-toggle" onClick={() => toggleHelp('backup')}>
+              {helpOpen.backup ? '– Hide' : '+ Backups & updates'}
+            </div>
+            {helpOpen.backup && (
+              <p className="desc" style={{marginBottom: 0}}>
+                Your data lives only on this device. Export a backup from Settings periodically — the app will remind you if it's been a while. The version number at the bottom of Settings shows which build you're on.<br/><br/>
+                If a recent update isn't showing up: fully close the app and reopen it twice, or use Settings → Backup → <b>Check for updates</b> to force a check. If it's still stuck, export a backup, delete the home screen icon, and add it fresh from the link — then import your backup back in. This is a known iOS limitation with home-screen web apps generally, not specific to this app.
+              </p>
+            )}
+
+            <hr className="divider" />
+            <div className="advanced-toggle" onClick={() => toggleHelp('sharing')}>
+              {helpOpen.sharing ? '– Hide' : '+ Sharing this app'}
+            </div>
+            {helpOpen.sharing && (
+              <p className="desc" style={{marginBottom: 0}}>
+                Just send someone the same link. Each person's entries are private to their own phone — nothing is shared or synced between users.
+              </p>
+            )}
 
             <div className="btn-row">
               <button className="btn btn-primary" onClick={() => setShowHelp(false)}>Got it</button>
