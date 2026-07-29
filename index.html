@@ -559,7 +559,7 @@ const MONTH_NAMES = ['January','February','March','April','May','June','July','A
 const WEEKDAYS = ['S','M','T','W','T','F','S'];
 const STATUS_CYCLE = [null, 'full', 'half', 'quarter'];
 const STATUS_VALUE = { full: 1, half: 0.5, quarter: 0.25 };
-const APP_VERSION = 'v38';
+const APP_VERSION = 'v39';
 const STORAGE_KEY = 'daysWorkedTrackerData';
 const META_KEY = 'daysWorkedTrackerMeta';
 const THEME_KEY = 'daysWorkedTrackerTheme';
@@ -1073,6 +1073,16 @@ function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [helpOpen, setHelpOpen] = useState({});
   const toggleHelp = (key) => setHelpOpen(h => ({ ...h, [key]: !h[key] }));
+  const [linkCopied, setLinkCopied] = useState(false);
+  const appLink = (typeof window !== 'undefined') ? (window.location.origin + window.location.pathname) : '';
+  const copyAppLink = () => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(appLink).then(() => {
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 2000);
+      }).catch(() => {});
+    }
+  };
 
   const anyModalOpen = showSettings || showSummary || showAddTour || showAdjustments || showHelp || !!dayDetailIso;
   useEffect(() => {
@@ -1708,9 +1718,15 @@ function App() {
               {helpOpen.sharing ? '– Hide' : '+ Sharing this app'}
             </div>
             {helpOpen.sharing && (
-              <p className="desc" style={{marginBottom: 0}}>
-                Just send someone the same link. Each person's entries are private to their own phone — nothing is shared or synced between users.
-              </p>
+              <React.Fragment>
+                <p className="desc" style={{marginBottom: 10}}>
+                  Send someone this link. Each person's entries are private to their own phone — nothing is shared or synced between users.
+                </p>
+                <div className="manage-contract-row">
+                  <input type="text" readOnly value={appLink} onClick={(e) => e.target.select()} />
+                  <button onClick={copyAppLink}>{linkCopied ? 'Copied!' : 'Copy'}</button>
+                </div>
+              </React.Fragment>
             )}
 
             <div className="btn-row">

@@ -127,4 +127,4 @@ This is a known iOS limitation with home-screen web apps generally, not somethin
 
 ## Sharing this app with someone else
 
-Just send them the same link. Each person's entries are private to their own phone — nothing is shared or synced between users.
+Just send them the same link. Each person's entries are private to their own phone — nothing is shared or synced between users. The Help modal's "Sharing this app" section has a one-tap **Copy** button for the link too, if you don't want to dig up the URL yourself each time.
