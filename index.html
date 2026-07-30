@@ -559,7 +559,7 @@ const MONTH_NAMES = ['January','February','March','April','May','June','July','A
 const WEEKDAYS = ['S','M','T','W','T','F','S'];
 const STATUS_CYCLE = [null, 'full', 'half', 'quarter'];
 const STATUS_VALUE = { full: 1, half: 0.5, quarter: 0.25 };
-const APP_VERSION = 'v39';
+const APP_VERSION = 'v40';
 const STORAGE_KEY = 'daysWorkedTrackerData';
 const META_KEY = 'daysWorkedTrackerMeta';
 const THEME_KEY = 'daysWorkedTrackerTheme';
@@ -1110,14 +1110,25 @@ function App() {
 
   const checkForUpdates = async () => {
     setUpdateCheckStatus('Checking…');
+    let reloaded = false;
+    const doReload = () => { if (!reloaded) { reloaded = true; window.location.reload(); } };
     try {
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          setUpdateCheckStatus('Updating…');
+          doReload();
+        }, { once: true });
+      }
       const reg = window.__swRegistration || (await navigator.serviceWorker?.getRegistration());
       if (reg) await reg.update();
-      setUpdateCheckStatus('Reloading…');
-      setTimeout(() => window.location.reload(), 1200);
+      // Safety net: if no new version is actually found (already up to date), or the
+      // controllerchange event doesn't fire for some reason, reload anyway after giving
+      // a real install (fetching + caching everything fresh) enough time to finish.
+      setUpdateCheckStatus('Updating…');
+      setTimeout(() => { setUpdateCheckStatus('Reloading…'); doReload(); }, 6000);
     } catch (e) {
       setUpdateCheckStatus('Reloading…');
-      setTimeout(() => window.location.reload(), 600);
+      setTimeout(doReload, 600);
     }
   };
 
