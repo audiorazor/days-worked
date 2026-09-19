@@ -559,9 +559,10 @@ const MONTH_NAMES = ['January','February','March','April','May','June','July','A
 const WEEKDAYS = ['S','M','T','W','T','F','S'];
 const STATUS_CYCLE = [null, 'full', 'half', 'quarter'];
 const STATUS_VALUE = { full: 1, half: 0.5, quarter: 0.25 };
-const APP_VERSION = 'v40';
+const APP_VERSION = 'v41';
 const STORAGE_KEY = 'daysWorkedTrackerData';
 const META_KEY = 'daysWorkedTrackerMeta';
+const PAY_PERIOD_KEY = 'daysWorkedPayPeriod';
 const THEME_KEY = 'daysWorkedTrackerTheme';
 const LONG_PRESS_MS = 450;
 const MOVE_CANCEL_PX = 10;
@@ -722,6 +723,34 @@ function loadMeta() {
 function saveMeta(meta) {
   try { localStorage.setItem(META_KEY, JSON.stringify(meta)); } catch (e) {}
 }
+function loadPayPeriod() {
+  try {
+    const raw = localStorage.getItem(PAY_PERIOD_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+function savePayPeriod(pp) {
+  try {
+    if (pp) localStorage.setItem(PAY_PERIOD_KEY, JSON.stringify(pp));
+    else localStorage.removeItem(PAY_PERIOD_KEY);
+  } catch (e) {}
+}
+// Biweekly periods repeat forever every 14 days from one known period-end date, so a
+// single anchor covers every year, past or future — no per-year re-entry needed.
+function periodBoundsFor(dateStr, anchorEndDateStr) {
+  const MS_DAY = 86400000;
+  const anchor = new Date(anchorEndDateStr + 'T00:00:00Z').getTime();
+  const target = new Date(dateStr + 'T00:00:00Z').getTime();
+  const diffDays = Math.round((target - anchor) / MS_DAY);
+  const k = Math.ceil(diffDays / 14);
+  const periodEndMs = anchor + k * 14 * MS_DAY;
+  const periodStartMs = periodEndMs - 13 * MS_DAY;
+  const toISO = (ms) => new Date(ms).toISOString().slice(0, 10);
+  return { start: toISO(periodStartMs), end: toISO(periodEndMs) };
+}
 
 function App() {
   const hasStorage = useMemo(() => storageAvailable(), []);
@@ -740,6 +769,7 @@ function App() {
     return m;
   });
   const [backupNudgeDismissed, setBackupNudgeDismissed] = useState(false);
+  const [payPeriodSettings, setPayPeriodSettings] = useState(() => hasStorage ? loadPayPeriod() : null);
 
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState(new Date().getMonth());
@@ -747,6 +777,11 @@ function App() {
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [showToursSection, setShowToursSection] = useState(false);
   const [showBackupSection, setShowBackupSection] = useState(false);
+  const [showPayPeriodSection, setShowPayPeriodSection] = useState(false);
+  const [payPeriodDraft, setPayPeriodDraft] = useState({
+    anchorEndDate: payPeriodSettings?.anchorEndDate || '',
+    payLagDays: payPeriodSettings?.payLagDays != null ? String(payPeriodSettings.payLagDays) : ''
+  });
   const [editingSettingsYear, setEditingSettingsYear] = useState(new Date().getFullYear());
   const [showSummary, setShowSummary] = useState(false);
   const [hideMoney, setHideMoney] = useState(false);
@@ -765,6 +800,7 @@ function App() {
   }, [theme]);
   const [showAddTour, setShowAddTour] = useState(false);
   const [showAdjustments, setShowAdjustments] = useState(false);
+  const [showPayPeriodBreakdown, setShowPayPeriodBreakdown] = useState(false);
   const [newTourName, setNewTourName] = useState('');
   const [dayDetailIso, setDayDetailIso] = useState(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
@@ -958,6 +994,19 @@ function App() {
     setShowSettings(false);
   };
 
+  const savePayPeriodSettings = () => {
+    if (!payPeriodDraft.anchorEndDate || payPeriodDraft.payLagDays.trim() === '') return;
+    const lagParsed = parseFloat(payPeriodDraft.payLagDays);
+    const next = { cadence: 'biweekly', anchorEndDate: payPeriodDraft.anchorEndDate, payLagDays: isNaN(lagParsed) ? 0 : lagParsed };
+    setPayPeriodSettings(next);
+    savePayPeriod(next);
+  };
+  const clearPayPeriodSettings = () => {
+    setPayPeriodSettings(null);
+    savePayPeriod(null);
+    setPayPeriodDraft({ anchorEndDate: '', payLagDays: '' });
+  };
+
   const [newAdjAmount, setNewAdjAmount] = useState('');
   const [newAdjNote, setNewAdjNote] = useState('');
   const [newAdjTour, setNewAdjTour] = useState('');
@@ -985,7 +1034,7 @@ function App() {
   };
 
   const exportData = () => {
-    const payload = JSON.stringify({ tours, yearSettings, entries, adjustments, activeTour }, null, 2);
+    const payload = JSON.stringify({ tours, yearSettings, entries, adjustments, activeTour, payPeriod: payPeriodSettings }, null, 2);
     const blob = new Blob([payload], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1013,6 +1062,10 @@ function App() {
         const nActive = parsed.activeTour || Object.keys(nt)[0] || null;
         setTours(nt); setYearSettings(nys); setEntries(ne); setAdjustments(nAdj); setActiveTour(nActive);
         persist(nt, nys, ne, nAdj, nActive);
+        if ('payPeriod' in parsed) {
+          setPayPeriodSettings(parsed.payPeriod);
+          savePayPeriod(parsed.payPeriod);
+        }
         alert('Backup imported.');
       } catch (err) {
         alert('That file could not be read as a backup.');
@@ -1066,6 +1119,43 @@ function App() {
     }
     return null;
   }, [isOver, contractDays, entries, viewYear, startingBalance, startingBalanceDate, yearAdjustments]);
+
+  // Walks the same chronological event timeline as overageInfo, but keeps going for the
+  // whole year, tracking exactly how much of each day/adjustment's value falls above the
+  // contract-days line — including a day that straddles the threshold — and buckets that
+  // "extra" portion into whichever biweekly pay period it actually falls in.
+  const payPeriodBreakdown = useMemo(() => {
+    if (!isOver || !payPeriodSettings?.anchorEndDate || !dayRate || contractDays <= 0) return null;
+    const undatedAdjTotal = yearAdjustments.filter(a => !a.date).reduce((s, a) => s + a.amount, 0);
+    let running = startingBalance + undatedAdjTotal;
+    const preTrackingExtra = Math.max(0, running - contractDays);
+
+    const viewedYearPrefix = viewYear + '-';
+    const dayEvents = Object.keys(entries)
+      .filter(iso => iso.startsWith(viewedYearPrefix))
+      .filter(iso => !(startingBalanceDate && iso <= startingBalanceDate))
+      .map(iso => ({ date: iso, amount: dayTotal(entries[iso]) }));
+    const adjEvents = yearAdjustments.filter(a => a.date).map(a => ({ date: a.date, amount: a.amount }));
+    const allEvents = [...dayEvents, ...adjEvents].sort((a, b) => a.date.localeCompare(b.date));
+
+    const periodMap = {};
+    for (const ev of allEvents) {
+      const before = running;
+      running += ev.amount;
+      const extraHere = Math.max(0, running - contractDays) - Math.max(0, before - contractDays);
+      if (extraHere > 0) {
+        const { start, end } = periodBoundsFor(ev.date, payPeriodSettings.anchorEndDate);
+        const payDate = addDaysISO(end, payPeriodSettings.payLagDays);
+        if (!periodMap[end]) periodMap[end] = { start, end, payDate, extraDays: 0 };
+        periodMap[end].extraDays += extraHere;
+      }
+    }
+    const periods = Object.values(periodMap)
+      .map(p => ({ ...p, extraPay: p.extraDays * dayRate }))
+      .sort((a, b) => b.end.localeCompare(a.end));
+
+    return { preTrackingExtra, preTrackingPay: preTrackingExtra * dayRate, periods };
+  }, [isOver, payPeriodSettings, dayRate, contractDays, startingBalance, startingBalanceDate, yearAdjustments, entries, viewYear]);
 
   const [checkDate, setCheckDate] = useState('');
   const [showByTourSection, setShowByTourSection] = useState(false);
@@ -1530,6 +1620,11 @@ function App() {
                 <span>Extra pay ({extraDays.toFixed(1)} days)</span><b>{hideMoney ? '•••••' : '$' + extraPay.toFixed(0)}</b>
               </div>
             )}
+            {payPeriodBreakdown && payPeriodBreakdown.periods.length > 0 && (
+              <div className="earnings-panel" onClick={() => setShowPayPeriodBreakdown(true)} style={{cursor: 'pointer'}}>
+                <span>Extra pay by period</span><b>›</b>
+              </div>
+            )}
             {yearAdjustments.length > 0 && (
               <div className="earnings-panel" onClick={() => setShowAdjustments(true)} style={{cursor: 'pointer'}}>
                 <span>Employer adjustment ({adjustmentTotal > 0 ? '+' : ''}{adjustmentTotal.toFixed(1)}) · Manage</span><b>›</b>
@@ -1697,6 +1792,7 @@ function App() {
             {helpOpen.summary && (
               <p className="desc" style={{marginBottom: 0}}>
                 Once you're over your contract days, the stat panel shows the exact date the running total crossed the line — worked out from your real logged days in order, accounting for stacking and any dated adjustments.<br/><br/>
+                If you've set up pay periods (Settings → Pay periods — biweekly only, set once with a known period-end date and how many days later you get paid), an "Extra pay by period" link appears once you're over, breaking down exactly how much extra landed in each paycheck instead of just the year-end total.<br/><br/>
                 Year Summary (bar chart icon) has a <b>"Check total as of a date"</b> tool — pick any date and see your cumulative total up through that day, for any year. "By tour" and "Notes" are tucked behind their own "+" toggles to keep the screen short.
               </p>
             )}
@@ -1816,6 +1912,37 @@ function App() {
         </div>
       )}
 
+      {showPayPeriodBreakdown && payPeriodBreakdown && (
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowPayPeriodBreakdown(false); }}>
+          <div className="modal">
+            <h2>Extra pay by period</h2>
+            <p className="desc">Which pay period each extra day landed in, based on your biweekly cadence. The total below should match your Extra Pay figure.</p>
+
+            {payPeriodBreakdown.preTrackingExtra > 0 && (
+              <div className="summary-row">
+                <div className="summary-year" style={{fontSize: 13}}>Before any period (starting balance / undated adjustments)</div>
+                <div className="summary-stats"><b>{hideMoney ? '•••••' : '$' + payPeriodBreakdown.preTrackingPay.toFixed(0)}</b><div>{payPeriodBreakdown.preTrackingExtra.toFixed(1)} days</div></div>
+              </div>
+            )}
+            {payPeriodBreakdown.periods.map(p => (
+              <div className="summary-row" key={p.end}>
+                <div className="summary-year" style={{fontSize: 13}}>{friendlyDate(p.start)} – {friendlyDate(p.end)}<div style={{fontSize: 11, color: 'var(--text-muted)', fontWeight: 400}}>Paid {friendlyDate(p.payDate)}</div></div>
+                <div className="summary-stats"><b>{hideMoney ? '•••••' : '$' + p.extraPay.toFixed(0)}</b><div>{p.extraDays.toFixed(1)} days</div></div>
+              </div>
+            ))}
+            <hr className="divider" />
+            <div className="summary-row">
+              <div className="summary-year">Total</div>
+              <div className="summary-stats"><b>{hideMoney ? '•••••' : '$' + extraPay.toFixed(0)}</b></div>
+            </div>
+
+            <div className="btn-row">
+              <button className="btn btn-primary" onClick={() => setShowPayPeriodBreakdown(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSettings && (
         <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
           <div className="modal">
@@ -1888,6 +2015,33 @@ function App() {
               <button className="btn btn-ghost" onClick={() => setShowSettings(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={saveSettings}>Save</button>
             </div>
+
+            <hr className="divider" />
+            <div className="advanced-toggle" onClick={() => setShowPayPeriodSection(v => !v)}>
+              {showPayPeriodSection ? '– Hide pay periods' : '+ Pay periods' + (payPeriodSettings ? ' (set)' : '')}
+            </div>
+            {showPayPeriodSection && (
+              <React.Fragment>
+                <p className="desc" style={{marginBottom: 10}}>
+                  Biweekly only for now. This is a single global setting, not per-year — one anchor date covers every year automatically, since the 14-day cycle never resets at January 1st.
+                </p>
+                <div className="field">
+                  <label>A known pay period's end date</label>
+                  <input type="date" value={payPeriodDraft.anchorEndDate}
+                    onChange={e => setPayPeriodDraft(d => ({ ...d, anchorEndDate: e.target.value }))} />
+                  <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>The last day of a pay period you're certain about — not the pay date itself.</div>
+                </div>
+                <div className="field">
+                  <label>Days from period end until pay day</label>
+                  <input type="number" inputMode="decimal" step="1" placeholder="e.g. 5" value={payPeriodDraft.payLagDays}
+                    onChange={e => setPayPeriodDraft(d => ({ ...d, payLagDays: e.target.value }))} />
+                </div>
+                <div className="btn-row">
+                  {payPeriodSettings && <button className="btn btn-ghost" onClick={clearPayPeriodSettings}>Clear</button>}
+                  <button className="btn btn-primary" onClick={savePayPeriodSettings}>Save</button>
+                </div>
+              </React.Fragment>
+            )}
 
             <hr className="divider" />
             <div className="advanced-toggle" onClick={() => setShowToursSection(v => !v)}>
