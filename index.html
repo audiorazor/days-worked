@@ -559,7 +559,7 @@ const MONTH_NAMES = ['January','February','March','April','May','June','July','A
 const WEEKDAYS = ['S','M','T','W','T','F','S'];
 const STATUS_CYCLE = [null, 'full', 'half', 'quarter'];
 const STATUS_VALUE = { full: 1, half: 0.5, quarter: 0.25 };
-const APP_VERSION = 'v41';
+const APP_VERSION = 'v42';
 const STORAGE_KEY = 'daysWorkedTrackerData';
 const META_KEY = 'daysWorkedTrackerMeta';
 const PAY_PERIOD_KEY = 'daysWorkedPayPeriod';
@@ -751,6 +751,17 @@ function periodBoundsFor(dateStr, anchorEndDateStr) {
   const toISO = (ms) => new Date(ms).toISOString().slice(0, 10);
   return { start: toISO(periodStartMs), end: toISO(periodEndMs) };
 }
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+// Finds the most recent date on or before dateStr that falls on the given weekday (0=Sunday).
+// Used to derive the period-end date from "your pay day" + "what weekday your period ends on" —
+// this also naturally handles an early bank deposit, since the actual pay date just ends up a
+// few days closer to the period end than a coworker paid on the "normal" day would be.
+function mostRecentWeekdayOnOrBefore(dateStr, targetWeekdayIndex) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  let diff = d.getUTCDay() - targetWeekdayIndex;
+  if (diff < 0) diff += 7;
+  return addDaysISO(dateStr, -diff);
+}
 
 function App() {
   const hasStorage = useMemo(() => storageAvailable(), []);
@@ -779,8 +790,10 @@ function App() {
   const [showBackupSection, setShowBackupSection] = useState(false);
   const [showPayPeriodSection, setShowPayPeriodSection] = useState(false);
   const [payPeriodDraft, setPayPeriodDraft] = useState({
-    anchorEndDate: payPeriodSettings?.anchorEndDate || '',
-    payLagDays: payPeriodSettings?.payLagDays != null ? String(payPeriodSettings.payLagDays) : ''
+    lastPayDate: (payPeriodSettings?.anchorEndDate && payPeriodSettings?.payLagDays != null)
+      ? addDaysISO(payPeriodSettings.anchorEndDate, payPeriodSettings.payLagDays) : '',
+    periodEndWeekday: payPeriodSettings?.anchorEndDate
+      ? String(new Date(payPeriodSettings.anchorEndDate + 'T00:00:00Z').getUTCDay()) : ''
   });
   const [editingSettingsYear, setEditingSettingsYear] = useState(new Date().getFullYear());
   const [showSummary, setShowSummary] = useState(false);
@@ -995,16 +1008,18 @@ function App() {
   };
 
   const savePayPeriodSettings = () => {
-    if (!payPeriodDraft.anchorEndDate || payPeriodDraft.payLagDays.trim() === '') return;
-    const lagParsed = parseFloat(payPeriodDraft.payLagDays);
-    const next = { cadence: 'biweekly', anchorEndDate: payPeriodDraft.anchorEndDate, payLagDays: isNaN(lagParsed) ? 0 : lagParsed };
+    if (!payPeriodDraft.lastPayDate || payPeriodDraft.periodEndWeekday === '') return;
+    const weekdayIdx = parseInt(payPeriodDraft.periodEndWeekday, 10);
+    const anchorEndDate = mostRecentWeekdayOnOrBefore(payPeriodDraft.lastPayDate, weekdayIdx);
+    const payLagDays = Math.round((new Date(payPeriodDraft.lastPayDate + 'T00:00:00Z') - new Date(anchorEndDate + 'T00:00:00Z')) / 86400000);
+    const next = { cadence: 'biweekly', anchorEndDate, payLagDays };
     setPayPeriodSettings(next);
     savePayPeriod(next);
   };
   const clearPayPeriodSettings = () => {
     setPayPeriodSettings(null);
     savePayPeriod(null);
-    setPayPeriodDraft({ anchorEndDate: '', payLagDays: '' });
+    setPayPeriodDraft({ lastPayDate: '', periodEndWeekday: '' });
   };
 
   const [newAdjAmount, setNewAdjAmount] = useState('');
@@ -1152,7 +1167,7 @@ function App() {
     }
     const periods = Object.values(periodMap)
       .map(p => ({ ...p, extraPay: p.extraDays * dayRate }))
-      .sort((a, b) => b.end.localeCompare(a.end));
+      .sort((a, b) => a.end.localeCompare(b.end));
 
     return { preTrackingExtra, preTrackingPay: preTrackingExtra * dayRate, periods };
   }, [isOver, payPeriodSettings, dayRate, contractDays, startingBalance, startingBalanceDate, yearAdjustments, entries, viewYear]);
@@ -1792,7 +1807,7 @@ function App() {
             {helpOpen.summary && (
               <p className="desc" style={{marginBottom: 0}}>
                 Once you're over your contract days, the stat panel shows the exact date the running total crossed the line — worked out from your real logged days in order, accounting for stacking and any dated adjustments.<br/><br/>
-                If you've set up pay periods (Settings → Pay periods — biweekly only, set once with a known period-end date and how many days later you get paid), an "Extra pay by period" link appears once you're over, breaking down exactly how much extra landed in each paycheck instead of just the year-end total.<br/><br/>
+                If you've set up pay periods (Settings → Pay periods — biweekly only, just your last pay day plus which weekday your pay period ends on), an "Extra pay by period" link appears once you're over, breaking down exactly how much extra landed in each paycheck instead of just the year-end total. This handles an early bank deposit correctly too — enter the day money actually landed in your account, even if that's earlier than your official pay day.<br/><br/>
                 Year Summary (bar chart icon) has a <b>"Check total as of a date"</b> tool — pick any date and see your cumulative total up through that day, for any year. "By tour" and "Notes" are tucked behind their own "+" toggles to keep the screen short.
               </p>
             )}
@@ -2023,18 +2038,22 @@ function App() {
             {showPayPeriodSection && (
               <React.Fragment>
                 <p className="desc" style={{marginBottom: 10}}>
-                  Biweekly only for now. This is a single global setting, not per-year — one anchor date covers every year automatically, since the 14-day cycle never resets at January 1st.
+                  Biweekly only for now. This is a single global setting, not per-year — one date covers every year automatically, since the 14-day cycle never resets at January 1st.
                 </p>
                 <div className="field">
-                  <label>A known pay period's end date</label>
-                  <input type="date" value={payPeriodDraft.anchorEndDate}
-                    onChange={e => setPayPeriodDraft(d => ({ ...d, anchorEndDate: e.target.value }))} />
-                  <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>The last day of a pay period you're certain about — not the pay date itself.</div>
+                  <label>Your most recent pay day</label>
+                  <input type="date" value={payPeriodDraft.lastPayDate}
+                    onChange={e => setPayPeriodDraft(d => ({ ...d, lastPayDate: e.target.value }))} />
+                  <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>The day the money actually landed in your account — even if that's earlier than your official pay day because of your bank.</div>
                 </div>
                 <div className="field">
-                  <label>Days from period end until pay day</label>
-                  <input type="number" inputMode="decimal" step="1" placeholder="e.g. 5" value={payPeriodDraft.payLagDays}
-                    onChange={e => setPayPeriodDraft(d => ({ ...d, payLagDays: e.target.value }))} />
+                  <label>What day of the week does your pay period end on?</label>
+                  <select value={payPeriodDraft.periodEndWeekday} onChange={e => setPayPeriodDraft(d => ({ ...d, periodEndWeekday: e.target.value }))}
+                    style={{ width: '100%', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 12px', color: 'var(--text)', fontFamily: "'JetBrains Mono', monospace", fontSize: 15 }}>
+                    <option value="">Select a day</option>
+                    {WEEKDAY_NAMES.map((name, idx) => <option key={idx} value={idx}>{name}</option>)}
+                  </select>
+                  <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>Check a pay stub for "Period Ending" — that's the day you want, not the pay date itself. This is the same for everyone at your company even if your own pay day lands earlier.</div>
                 </div>
                 <div className="btn-row">
                   {payPeriodSettings && <button className="btn btn-ghost" onClick={clearPayPeriodSettings}>Clear</button>}
