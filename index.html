@@ -108,7 +108,12 @@
     font-size: 17px;
   }
   .brand .dot { color: var(--accent); }
-  .header-icons { display: flex; gap: 8px; }
+  .header-icons { display: flex; gap: 6px; flex-shrink: 0; }
+  @media (max-width: 400px) {
+    .brand { font-size: 15px; }
+    .header-icons { gap: 5px; }
+    .icon-btn { width: 34px; height: 34px; border-radius: 11px; }
+  }
   .icon-btn {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -240,15 +245,18 @@
   .stat-panel > * { position: relative; }
   .stat-row {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
+    gap: 10px;
   }
   .stat-main {
     font-family: var(--display);
     font-weight: 700;
-    font-size: 44px;
+    font-size: clamp(30px, 10vw, 40px);
     letter-spacing: -0.03em;
     line-height: 1;
+    white-space: nowrap;
+    min-width: 0;
   }
   .stat-main .of {
     font-family: var(--body);
@@ -257,6 +265,18 @@
     font-weight: 600;
     letter-spacing: 0;
   }
+  .stat-chip {
+    flex: 0 0 auto;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-weight: 700;
+    font-size: 13px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-chip.over { background: var(--danger-dim); color: var(--danger); }
   .stat-label {
     font-size: 11px;
     letter-spacing: 0.09em;
@@ -265,13 +285,12 @@
     font-weight: 600;
     margin-top: 8px;
   }
-  .stat-sub {
-    text-align: right;
+  .stat-crossed {
     font-size: 12px;
     color: var(--text-muted);
-    line-height: 1.5;
+    margin-top: 8px;
   }
-  .stat-sub b { color: var(--text); font-family: var(--display); font-size: 15px; font-variant-numeric: tabular-nums; }
+  .stat-crossed b { color: var(--text); }
 
   .progress-track {
     margin-top: 18px;
@@ -604,10 +623,11 @@ const MONTH_NAMES = ['January','February','March','April','May','June','July','A
 const WEEKDAYS = ['S','M','T','W','T','F','S'];
 const STATUS_CYCLE = [null, 'full', 'half', 'quarter'];
 const STATUS_VALUE = { full: 1, half: 0.5, quarter: 0.25 };
-const APP_VERSION = 'v43';
+const APP_VERSION = 'v44';
 const STORAGE_KEY = 'daysWorkedTrackerData';
 const META_KEY = 'daysWorkedTrackerMeta';
-const PAY_PERIOD_KEY = 'daysWorkedPayPeriod';
+const OLD_PAY_PERIOD_KEY = 'daysWorkedPayPeriod'; // feature removed in v44; key cleared on load
+try { localStorage.removeItem(OLD_PAY_PERIOD_KEY); } catch (e) {}
 const THEME_KEY = 'daysWorkedTrackerTheme';
 const LONG_PRESS_MS = 450;
 const MOVE_CANCEL_PX = 10;
@@ -768,45 +788,6 @@ function loadMeta() {
 function saveMeta(meta) {
   try { localStorage.setItem(META_KEY, JSON.stringify(meta)); } catch (e) {}
 }
-function loadPayPeriod() {
-  try {
-    const raw = localStorage.getItem(PAY_PERIOD_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch (e) {
-    return null;
-  }
-}
-function savePayPeriod(pp) {
-  try {
-    if (pp) localStorage.setItem(PAY_PERIOD_KEY, JSON.stringify(pp));
-    else localStorage.removeItem(PAY_PERIOD_KEY);
-  } catch (e) {}
-}
-// Biweekly periods repeat forever every 14 days from one known period-end date, so a
-// single anchor covers every year, past or future — no per-year re-entry needed.
-function periodBoundsFor(dateStr, anchorEndDateStr) {
-  const MS_DAY = 86400000;
-  const anchor = new Date(anchorEndDateStr + 'T00:00:00Z').getTime();
-  const target = new Date(dateStr + 'T00:00:00Z').getTime();
-  const diffDays = Math.round((target - anchor) / MS_DAY);
-  const k = Math.ceil(diffDays / 14);
-  const periodEndMs = anchor + k * 14 * MS_DAY;
-  const periodStartMs = periodEndMs - 13 * MS_DAY;
-  const toISO = (ms) => new Date(ms).toISOString().slice(0, 10);
-  return { start: toISO(periodStartMs), end: toISO(periodEndMs) };
-}
-const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-// Finds the most recent date on or before dateStr that falls on the given weekday (0=Sunday).
-// Used to derive the period-end date from "your pay day" + "what weekday your period ends on" —
-// this also naturally handles an early bank deposit, since the actual pay date just ends up a
-// few days closer to the period end than a coworker paid on the "normal" day would be.
-function mostRecentWeekdayOnOrBefore(dateStr, targetWeekdayIndex) {
-  const d = new Date(dateStr + 'T00:00:00Z');
-  let diff = d.getUTCDay() - targetWeekdayIndex;
-  if (diff < 0) diff += 7;
-  return addDaysISO(dateStr, -diff);
-}
 
 function App() {
   const hasStorage = useMemo(() => storageAvailable(), []);
@@ -825,7 +806,6 @@ function App() {
     return m;
   });
   const [backupNudgeDismissed, setBackupNudgeDismissed] = useState(false);
-  const [payPeriodSettings, setPayPeriodSettings] = useState(() => hasStorage ? loadPayPeriod() : null);
 
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState(new Date().getMonth());
@@ -833,13 +813,6 @@ function App() {
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [showToursSection, setShowToursSection] = useState(false);
   const [showBackupSection, setShowBackupSection] = useState(false);
-  const [showPayPeriodSection, setShowPayPeriodSection] = useState(false);
-  const [payPeriodDraft, setPayPeriodDraft] = useState({
-    lastPayDate: (payPeriodSettings?.anchorEndDate && payPeriodSettings?.payLagDays != null)
-      ? addDaysISO(payPeriodSettings.anchorEndDate, payPeriodSettings.payLagDays) : '',
-    periodEndWeekday: payPeriodSettings?.anchorEndDate
-      ? String(new Date(payPeriodSettings.anchorEndDate + 'T00:00:00Z').getUTCDay()) : ''
-  });
   const [editingSettingsYear, setEditingSettingsYear] = useState(new Date().getFullYear());
   const [showSummary, setShowSummary] = useState(false);
   const [hideMoney, setHideMoney] = useState(false);
@@ -858,7 +831,6 @@ function App() {
   }, [theme]);
   const [showAddTour, setShowAddTour] = useState(false);
   const [showAdjustments, setShowAdjustments] = useState(false);
-  const [showPayPeriodBreakdown, setShowPayPeriodBreakdown] = useState(false);
   const [newTourName, setNewTourName] = useState('');
   const [dayDetailIso, setDayDetailIso] = useState(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
@@ -1052,20 +1024,6 @@ function App() {
     setShowSettings(false);
   };
 
-  const savePayPeriodSettings = () => {
-    if (!payPeriodDraft.lastPayDate || payPeriodDraft.periodEndWeekday === '') return;
-    const weekdayIdx = parseInt(payPeriodDraft.periodEndWeekday, 10);
-    const anchorEndDate = mostRecentWeekdayOnOrBefore(payPeriodDraft.lastPayDate, weekdayIdx);
-    const payLagDays = Math.round((new Date(payPeriodDraft.lastPayDate + 'T00:00:00Z') - new Date(anchorEndDate + 'T00:00:00Z')) / 86400000);
-    const next = { cadence: 'biweekly', anchorEndDate, payLagDays };
-    setPayPeriodSettings(next);
-    savePayPeriod(next);
-  };
-  const clearPayPeriodSettings = () => {
-    setPayPeriodSettings(null);
-    savePayPeriod(null);
-    setPayPeriodDraft({ lastPayDate: '', periodEndWeekday: '' });
-  };
 
   const [newAdjAmount, setNewAdjAmount] = useState('');
   const [newAdjNote, setNewAdjNote] = useState('');
@@ -1094,7 +1052,7 @@ function App() {
   };
 
   const exportData = () => {
-    const payload = JSON.stringify({ tours, yearSettings, entries, adjustments, activeTour, payPeriod: payPeriodSettings }, null, 2);
+    const payload = JSON.stringify({ tours, yearSettings, entries, adjustments, activeTour }, null, 2);
     const blob = new Blob([payload], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1122,10 +1080,6 @@ function App() {
         const nActive = parsed.activeTour || Object.keys(nt)[0] || null;
         setTours(nt); setYearSettings(nys); setEntries(ne); setAdjustments(nAdj); setActiveTour(nActive);
         persist(nt, nys, ne, nAdj, nActive);
-        if ('payPeriod' in parsed) {
-          setPayPeriodSettings(parsed.payPeriod);
-          savePayPeriod(parsed.payPeriod);
-        }
         alert('Backup imported.');
       } catch (err) {
         alert('That file could not be read as a backup.');
@@ -1180,42 +1134,6 @@ function App() {
     return null;
   }, [isOver, contractDays, entries, viewYear, startingBalance, startingBalanceDate, yearAdjustments]);
 
-  // Walks the same chronological event timeline as overageInfo, but keeps going for the
-  // whole year, tracking exactly how much of each day/adjustment's value falls above the
-  // contract-days line — including a day that straddles the threshold — and buckets that
-  // "extra" portion into whichever biweekly pay period it actually falls in.
-  const payPeriodBreakdown = useMemo(() => {
-    if (!isOver || !payPeriodSettings?.anchorEndDate || !dayRate || contractDays <= 0) return null;
-    const undatedAdjTotal = yearAdjustments.filter(a => !a.date).reduce((s, a) => s + a.amount, 0);
-    let running = startingBalance + undatedAdjTotal;
-    const preTrackingExtra = Math.max(0, running - contractDays);
-
-    const viewedYearPrefix = viewYear + '-';
-    const dayEvents = Object.keys(entries)
-      .filter(iso => iso.startsWith(viewedYearPrefix))
-      .filter(iso => !(startingBalanceDate && iso <= startingBalanceDate))
-      .map(iso => ({ date: iso, amount: dayTotal(entries[iso]) }));
-    const adjEvents = yearAdjustments.filter(a => a.date).map(a => ({ date: a.date, amount: a.amount }));
-    const allEvents = [...dayEvents, ...adjEvents].sort((a, b) => a.date.localeCompare(b.date));
-
-    const periodMap = {};
-    for (const ev of allEvents) {
-      const before = running;
-      running += ev.amount;
-      const extraHere = Math.max(0, running - contractDays) - Math.max(0, before - contractDays);
-      if (extraHere > 0) {
-        const { start, end } = periodBoundsFor(ev.date, payPeriodSettings.anchorEndDate);
-        const payDate = addDaysISO(end, payPeriodSettings.payLagDays);
-        if (!periodMap[end]) periodMap[end] = { start, end, payDate, extraDays: 0 };
-        periodMap[end].extraDays += extraHere;
-      }
-    }
-    const periods = Object.values(periodMap)
-      .map(p => ({ ...p, extraPay: p.extraDays * dayRate }))
-      .sort((a, b) => a.end.localeCompare(b.end));
-
-    return { preTrackingExtra, preTrackingPay: preTrackingExtra * dayRate, periods };
-  }, [isOver, payPeriodSettings, dayRate, contractDays, startingBalance, startingBalanceDate, yearAdjustments, entries, viewYear]);
 
   const [checkDate, setCheckDate] = useState('');
   const [showByTourSection, setShowByTourSection] = useState(false);
@@ -1648,27 +1566,25 @@ function App() {
       {!needsSetup && (
         <div className={"stat-panel" + (isOver ? " is-over" : "")}>
           <div className="stat-row">
-            <div>
-              <div className="stat-main">{totals.total.toFixed(1)} <span className="of">/ {contractDays}</span></div>
-              <div className="stat-label">Days worked · {viewYear === new Date().getFullYear() ? 'this year' : viewYear}</div>
-              {usingFallbackYear && (
-                <div className="stat-label" style={{marginTop: 2, color: 'var(--half)'}}>Using {usingFallbackYear} rates — tap ⚙ to set {viewYear}'s</div>
-              )}
-            </div>
-            <div className="stat-sub">
-              {isOver
-                ? <div>Over by <b style={{color: 'var(--danger)'}}>+{(totals.total - contractDays).toFixed(1)}</b></div>
-                : <div><b>{remaining.toFixed(1)}</b> to go</div>}
-              {isOver && overageInfo && (
-                overageInfo.crossedBeforeTracking
-                  ? <div style={{marginTop: 2}}>Already over before tracked days</div>
-                  : <div style={{marginTop: 2}}>Crossed {contractDays} on <b>{friendlyDate(overageInfo.date)}</b></div>
-              )}
+            <div className="stat-main">{totals.total.toFixed(1)} <span className="of">/ {contractDays}</span></div>
+            <div className={"stat-chip" + (isOver ? " over" : "")}>
+              {isOver ? '+' + (totals.total - contractDays).toFixed(1) : remaining.toFixed(1) + ' to go'}
             </div>
           </div>
+          <div className="stat-label">Days worked · {viewYear === new Date().getFullYear() ? 'this year' : viewYear}</div>
+          {usingFallbackYear && (
+            <div className="stat-label" style={{marginTop: 2, color: 'var(--half)'}}>Using {usingFallbackYear} rates — tap ⚙ to set {viewYear}'s</div>
+          )}
           <div className="progress-track">
             <div className={"progress-fill" + (isOver ? " over" : "")} style={{ width: pct + '%' }}></div>
           </div>
+          {isOver && overageInfo && (
+            <div className="stat-crossed">
+              {overageInfo.crossedBeforeTracking
+                ? 'Already over before your tracked days'
+                : <span>Crossed {contractDays} on <b>{friendlyDate(overageInfo.date)}</b></span>}
+            </div>
+          )}
           <div className="money-group">
             {dayRate && (
               <div className="earnings-panel">
@@ -1678,11 +1594,6 @@ function App() {
             {dayRate && extraDays > 0 && (
               <div className="earnings-panel">
                 <span>Extra pay ({extraDays.toFixed(1)} days)</span><b>{hideMoney ? '•••••' : '$' + extraPay.toFixed(0)}</b>
-              </div>
-            )}
-            {payPeriodBreakdown && payPeriodBreakdown.periods.length > 0 && (
-              <div className="earnings-panel" onClick={() => setShowPayPeriodBreakdown(true)} style={{cursor: 'pointer', color: 'var(--accent)', fontWeight: 600}}>
-                <span>Extra pay by period</span><b style={{color: 'var(--accent)'}}>›</b>
               </div>
             )}
             {yearAdjustments.length > 0 && (
@@ -1852,7 +1763,6 @@ function App() {
             {helpOpen.summary && (
               <p className="desc" style={{marginBottom: 0}}>
                 Once you're over your contract days, the stat panel shows the exact date the running total crossed the line — worked out from your real logged days in order, accounting for stacking and any dated adjustments.<br/><br/>
-                If you've set up pay periods (Settings → Pay periods — biweekly only, just your last pay day plus which weekday your pay period ends on), an "Extra pay by period" link appears once you're over, breaking down exactly how much extra landed in each paycheck instead of just the year-end total. This handles an early bank deposit correctly too — enter the day money actually landed in your account, even if that's earlier than your official pay day.<br/><br/>
                 Year Summary (bar chart icon) has a <b>"Check total as of a date"</b> tool — pick any date and see your cumulative total up through that day, for any year. "By tour" and "Notes" are tucked behind their own "+" toggles to keep the screen short.
               </p>
             )}
@@ -1972,37 +1882,6 @@ function App() {
         </div>
       )}
 
-      {showPayPeriodBreakdown && payPeriodBreakdown && (
-        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowPayPeriodBreakdown(false); }}>
-          <div className="modal">
-            <h2>Extra pay by period</h2>
-            <p className="desc">Which pay period each extra day landed in, based on your biweekly cadence. The total below should match your Extra Pay figure.</p>
-
-            {payPeriodBreakdown.preTrackingExtra > 0 && (
-              <div className="summary-row">
-                <div className="summary-year" style={{fontSize: 13}}>Before any period (starting balance / undated adjustments)</div>
-                <div className="summary-stats"><b>{hideMoney ? '•••••' : '$' + payPeriodBreakdown.preTrackingPay.toFixed(0)}</b><div>{payPeriodBreakdown.preTrackingExtra.toFixed(1)} days</div></div>
-              </div>
-            )}
-            {payPeriodBreakdown.periods.map(p => (
-              <div className="summary-row" key={p.end}>
-                <div className="summary-year" style={{fontSize: 13}}>{friendlyDate(p.start)} – {friendlyDate(p.end)}<div style={{fontSize: 11, color: 'var(--text-muted)', fontWeight: 400}}>Paid {friendlyDate(p.payDate)}</div></div>
-                <div className="summary-stats"><b>{hideMoney ? '•••••' : '$' + p.extraPay.toFixed(0)}</b><div>{p.extraDays.toFixed(1)} days</div></div>
-              </div>
-            ))}
-            <hr className="divider" />
-            <div className="summary-row">
-              <div className="summary-year">Total</div>
-              <div className="summary-stats"><b>{hideMoney ? '•••••' : '$' + extraPay.toFixed(0)}</b></div>
-            </div>
-
-            <div className="btn-row">
-              <button className="btn btn-primary" onClick={() => setShowPayPeriodBreakdown(false)}>Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showSettings && (
         <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
           <div className="modal">
@@ -2075,37 +1954,6 @@ function App() {
               <button className="btn btn-ghost" onClick={() => setShowSettings(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={saveSettings}>Save</button>
             </div>
-
-            <hr className="divider" />
-            <div className="advanced-toggle" onClick={() => setShowPayPeriodSection(v => !v)}>
-              {showPayPeriodSection ? '– Hide pay periods' : '+ Pay periods' + (payPeriodSettings ? ' (set)' : '')}
-            </div>
-            {showPayPeriodSection && (
-              <React.Fragment>
-                <p className="desc" style={{marginBottom: 10}}>
-                  Biweekly only for now. This is a single global setting, not per-year — one date covers every year automatically, since the 14-day cycle never resets at January 1st.
-                </p>
-                <div className="field">
-                  <label>Your most recent pay day</label>
-                  <input type="date" value={payPeriodDraft.lastPayDate}
-                    onChange={e => setPayPeriodDraft(d => ({ ...d, lastPayDate: e.target.value }))} />
-                  <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>The day the money actually landed in your account — even if that's earlier than your official pay day because of your bank.</div>
-                </div>
-                <div className="field">
-                  <label>What day of the week does your pay period end on?</label>
-                  <select value={payPeriodDraft.periodEndWeekday} onChange={e => setPayPeriodDraft(d => ({ ...d, periodEndWeekday: e.target.value }))}
-                    className="soft-input" style={{ padding: '12px 13px', fontSize: 15 }}>
-                    <option value="">Select a day</option>
-                    {WEEKDAY_NAMES.map((name, idx) => <option key={idx} value={idx}>{name}</option>)}
-                  </select>
-                  <div style={{fontSize: 11, color: 'var(--text-muted)', marginTop: 6}}>Check a pay stub for "Period Ending" — that's the day you want, not the pay date itself. This is the same for everyone at your company even if your own pay day lands earlier.</div>
-                </div>
-                <div className="btn-row">
-                  {payPeriodSettings && <button className="btn btn-ghost" onClick={clearPayPeriodSettings}>Clear</button>}
-                  <button className="btn btn-primary" onClick={savePayPeriodSettings}>Save</button>
-                </div>
-              </React.Fragment>
-            )}
 
             <hr className="divider" />
             <div className="advanced-toggle" onClick={() => setShowToursSection(v => !v)}>

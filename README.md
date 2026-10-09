@@ -78,15 +78,7 @@ If your employer counts your days differently than you do, use **+ Add employer 
 
 ### Seeing exactly when you went over
 
-Once you're over your contract days, the stat panel shows not just how far over, but the **exact date** the running total crossed the line — for example "Crossed 245 on Oct 5." It works out the real date based on your actual logged days in order, accounting for any stacking.
-
-### Extra pay by pay period
-
-If you're paid biweekly, Settings → **Pay periods** lets you set this up once: your most recent pay day, plus which day of the week your pay period ends on (check a pay stub for "Period Ending"). It's a single global setting, not per-year — one date covers every year automatically, since a 14-day cycle never resets at January 1st.
-
-If your bank deposits your pay a few days early, just enter the date the money actually landed in your account — the period-end weekday is the same for everyone at your company regardless of when any individual's bank happens to post it, so the math still comes out correct.
-
-Once set up, and once you're over your contract days, an **"Extra pay by period"** link appears in the stat panel. It shows exactly how many extra days and how much extra pay landed in each of your actual paychecks, listed oldest first — including correctly splitting a period where you crossed the threshold partway through, and factoring in any dated employer adjustments. The total always matches your main Extra Pay figure.
+Once you're over your contract days, a red chip next to your total shows how far over you are (before that, it shows how many days you have to go). Under the progress bar you'll see the **exact date** the running total crossed the line — for example "Crossed 245 on Oct 5." It works out the real date based on your actual logged days in order, accounting for any stacking.
 
 ### Year Summary (bar chart icon)
 
